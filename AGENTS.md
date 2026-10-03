@@ -52,6 +52,8 @@ Every new release bumps the **major** version by one and the build number by 100
 Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>` in Bun projects, or `npx eas-cli@latest <command>` otherwise; substitute that for bare `eas` in docs examples.
 Docs: https://docs.expo.dev/eas/index.md
 
+- eas.json is committed with `cli.appVersionSource: "local"` (app.json stays the version source of truth — app.json/package.json/splash are bumped in sync at every release) and `submit.production.ios.ascAppId: "6758099740"` (the App Store app ID), so non-interactive `eas build --auto-submit` works without prompts. Without the ascAppId, auto-submit fails after the build with "Set ascAppId in the submit profile" (hit Oct 2, 2026). If EAS CLI auto-edits eas.json or bumps a local build number during a build, discard those local edits (`git checkout -- eas.json app.json`) before `git pull`.
+
 ## Rules
 
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
