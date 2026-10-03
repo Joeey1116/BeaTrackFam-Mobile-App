@@ -14,7 +14,7 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ],
-      "versionCode": 815,
+      "versionCode": 816,
       "googleServicesFile": "./google-services.json"
     },
     "icon": "./assets/icon.png",
@@ -25,7 +25,7 @@
         "NSLocationWhenInUseUsageDescription": "BeaTrackFam uses your location to personalize delivery options and show relevant availability.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "815"
+      "buildNumber": "816"
     },
     "name": "BeaTrackFam",
     "orientation": "portrait",
@@ -60,7 +60,7 @@
     ],
     "slug": "beatrackfam",
     "userInterfaceStyle": "automatic",
-    "version": "8.1.5",
+    "version": "8.1.6",
     "web": {
       "bundler": "metro",
       "favicon": "./assets/favicon.png"

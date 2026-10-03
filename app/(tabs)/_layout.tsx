@@ -45,10 +45,16 @@ export default function TabsLayout() {
               style={StyleSheet.absoluteFill}
             />
           ) : (
+            // No blur in this native build: still read as glass — a
+            // translucent bar with a hairline edge, not a flat slab.
             <View
               style={[
                 StyleSheet.absoluteFill,
-                { backgroundColor: colors.surface },
+                {
+                  backgroundColor: colors.surface + "D9",
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: colors.border,
+                },
               ]}
             />
           ),

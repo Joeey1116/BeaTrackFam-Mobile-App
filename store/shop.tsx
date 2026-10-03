@@ -52,6 +52,10 @@ import {
   type AppAccount,
   type OrderReceipt,
 } from "../lib/accounts";
+import {
+  getOnboardingDone,
+  markOnboardingDone,
+} from "../lib/onboarding";
 
 interface ShopContextValue {
   // Live catalog
@@ -82,6 +86,7 @@ interface ShopContextValue {
   account: AppAccount | null;
   orders: OrderReceipt[];
   authLoading: boolean;
+  onboardingDone: boolean;
   isGuest: boolean;
   signUp: (
     name: string,
@@ -130,6 +135,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   // ---- Auth + profile state ----
   const [account, setAccount] = useState<AppAccount | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [onboardingDone, setOnboardingDone] = useState(false);
   // Device-local profile for guests. Signed-in members keep their
   // profile on their account instead.
   const [deviceProfile, setDeviceProfile] = useState<LocalProfile>({
@@ -146,13 +152,15 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const [current, localProfile] = await Promise.all([
+        const [current, localProfile, done] = await Promise.all([
           getCurrentAccount(),
           getLocalProfile(),
+          getOnboardingDone(),
         ]);
         if (cancelled) return;
         setAccount(current);
         setDeviceProfile(localProfile);
+        setOnboardingDone(done);
       } finally {
         if (!cancelled) setAuthLoading(false);
       }
@@ -177,7 +185,11 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         password,
         seedProfile: seed,
       });
-      if (result.ok) setAccount(result.account);
+      if (result.ok) {
+        setAccount(result.account);
+        setOnboardingDone(true);
+        void markOnboardingDone();
+      }
       return result;
     },
     []
@@ -186,7 +198,11 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string): Promise<AccountResult> => {
       const result = await signInToAccount({ email, password });
-      if (result.ok) setAccount(result.account);
+      if (result.ok) {
+        setAccount(result.account);
+        setOnboardingDone(true);
+        void markOnboardingDone();
+      }
       return result;
     },
     []
@@ -198,8 +214,12 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const continueAsGuest = useCallback(async () => {
-    await signOutAccount();
-    setAccount(null);
+    // "Guest" means "not signing in right now" — it is NOT a sign-out.
+    // Any stored session stays untouched, so closing and reopening the
+    // app never throws a signed-in user back to the login screens.
+    // We only record that onboarding is finished.
+    setOnboardingDone(true);
+    await markOnboardingDone();
   }, []);
 
   const changePassword = useCallback(
@@ -493,6 +513,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       account,
       orders,
       authLoading,
+      onboardingDone,
       isGuest: !account,
       signUp,
       signIn,
@@ -533,6 +554,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     account,
     orders,
     authLoading,
+    onboardingDone,
     signUp,
     signIn,
     signOut,
