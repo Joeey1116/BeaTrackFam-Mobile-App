@@ -77,6 +77,32 @@ This repository is the full source of the app, its release history, and its publ
 
 ---
 
+## Requirements
+
+### For shoppers (minimum OS to download & run)
+
+| Platform | Minimum OS | Notes |
+|---|---|---|
+| iOS | **iOS 16.4 or later** | iPhone 8 and newer. Set by the app's iOS deployment target (16.4). |
+| Android | **Android 7.0 (API 24) or later** | Set by the app's `minSdkVersion` (24). |
+
+### API / OS levels the app targets
+
+| Platform | Level | Value |
+|---|---|---|
+| Android | Target API (`targetSdkVersion`) | **36 — Android 16** (Google Play's required target for new apps and updates since Aug 31, 2026) |
+| Android | Compile API (`compileSdkVersion`) | **36 — Android 16** |
+| Android | Minimum API (`minSdkVersion`) | **24 — Android 7.0** |
+| iOS | Deployment target (minimum OS) | **iOS 16.4** |
+
+These levels are pinned explicitly in `app.json` (`ios.deploymentTarget`, `android.minSdkVersion` / `compileSdkVersion` / `targetSdkVersion`) and re-checked against current App Store and Google Play requirements at every release, so the app never silently falls behind a store API deadline.
+
+### For developers
+
+- **Node.js 20.19.4 or later** and npm
+- **EAS CLI ≥ 16** (`npm install -g eas-cli`) and an Expo account — all iOS/Android builds and store submissions run through EAS, so no local Xcode or Android Studio is required
+- A development build on a real device or simulator (the app uses native modules; Expo Go alone is not enough)
+
 ## Tech stack
 
 | Layer | What |
@@ -93,7 +119,7 @@ This repository is the full source of the app, its release history, and its publ
 
 ## Getting started (development)
 
-Requirements: Node 20+, npm, EAS CLI, and the Expo dev client build on device (the app uses native modules — Expo Go is not enough).
+Requirements: Node.js 20.19.4+, npm, EAS CLI, and the Expo dev client build on device (the app uses native modules — Expo Go is not enough).
 
 ```bash
 git clone https://github.com/Joeey1116/BeaTrackFam-Mobile-App.git

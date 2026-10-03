@@ -8,6 +8,9 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.beatrackfaminc",
+      "minSdkVersion": 24,
+      "compileSdkVersion": 36,
+      "targetSdkVersion": 36,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "com.google.android.gms.permission.AD_ID",
@@ -20,6 +23,7 @@
     "icon": "./assets/icon.png",
     "ios": {
       "bundleIdentifier": "com.beatrackfaminc",
+      "deploymentTarget": "16.4",
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "BeaTrackFam uses your location to personalize delivery options and show relevant availability.",
