@@ -1,7 +1,10 @@
 {
-  "name": "beatrackfam-app",
-  "version": "1.0.0",
+  "name": "@joeey1116/beatrackfam-mobile-app",
+  "version": "8.1.6",
   "main": "expo-router/entry",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -40,6 +43,5 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint"
-  },
-  "private": true
+  }
 }
