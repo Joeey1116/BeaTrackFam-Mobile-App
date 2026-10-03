@@ -1,6 +1,3 @@
-What's New
-A quick tune-up based on your feedback:
-
 • Stay signed in: the app now remembers you. Sign in once and you'll open straight into the shop every time — no more getting bounced back to the welcome screens, and "Shop as Guest" never signs you out by accident.
 
 • Liquid glass, everywhere it should be: the tab bar's frosted-glass look is finished, with a softer translucent finish as a backup so it still looks right on older builds too.
