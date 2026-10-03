@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1055012600549",
+    "project_id": "beatrackfam-mobile-app-notifs",
+    "storage_bucket": "beatrackfam-mobile-app-notifs.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1055012600549:android:eb7f2477eeb96cc8f0720c",
+        "android_client_info": {
+          "package_name": "com.beatrackfaminc"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBqP4bm4eRrljeOEz4M_9hM9RuNVJPisvE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

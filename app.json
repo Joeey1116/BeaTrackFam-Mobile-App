@@ -1,0 +1,76 @@
+{
+  "expo": {
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#000000",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.beatrackfaminc",
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "com.google.android.gms.permission.AD_ID",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "versionCode": 815,
+      "googleServicesFile": "./google-services.json"
+    },
+    "icon": "./assets/icon.png",
+    "ios": {
+      "bundleIdentifier": "com.beatrackfaminc",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "BeaTrackFam uses your location to personalize delivery options and show relevant availability.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "buildNumber": "815"
+    },
+    "name": "BeaTrackFam",
+    "orientation": "portrait",
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#000000",
+          "defaultChannel": "default"
+        }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "This identifier is used to personalize your BeaTrackFam experience and measure app performance."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "BeaTrackFam uses your location to personalize delivery options and show relevant availability."
+        }
+      ]
+    ],
+    "scheme": [
+      "beatrackfam",
+      "shop.76755992730.auth"
+    ],
+    "slug": "beatrackfam",
+    "userInterfaceStyle": "automatic",
+    "version": "8.1.5",
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "bb43fa7a-474d-4ed0-af1f-3593d7d1b7ea"
+      }
+    },
+    "owner": "beatrackfam"
+  }
+}

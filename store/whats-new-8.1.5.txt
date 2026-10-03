@@ -1,0 +1,18 @@
+What's New
+BeaTrackFam has been busy — here's everything that's new:
+
+• Product reviews: read real customer reviews and star ratings on product pages, and share your own.
+
+• Swipeable photo gallery: swipe through product photos with dots and a counter — pick a color or style and the gallery jumps to its photo.
+
+• Push notifications: be the first to know about new drops and new collections. Tap a notification and land right on the product. Manage notifications anytime in Settings.
+
+• Liquid glass tab bar: a new floating, frosted-glass tab bar that adapts to your light or dark theme.
+
+• Friendlier setup: permission screens that explain before they ask — notifications and app tracking ask in context, and location asks with one quick popup when the app opens.
+
+• Permissions in Settings: see live status for Push Notifications, App Tracking, and Location, use the in-app notifications toggle, or jump straight to Update Device Settings. The app refreshes your choices automatically on every launch.
+
+• Your tracking choice, clearly: a Grant Permission button, a Continue button that unlocks once you've answered, and a plain Tracking Allowed or Not Allowed readout.
+
+Questions or concerns? Email us at contact@beatrackfam.info

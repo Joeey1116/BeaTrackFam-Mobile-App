@@ -1,0 +1,12 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@shopify/checkout-sheet-kit": ["./lib/shopify-checkout-kit.d.ts"]
+    }
+  },
+  // The Cloudflare Worker deploys separately via wrangler (its own types);
+  // keep it out of the app's type-check.
+  "exclude": ["workers"]
+}
