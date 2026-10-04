@@ -53,9 +53,9 @@ type BlurViewType = typeof import("expo-blur")["BlurView"];
  * no TurboModuleRegistry name probe gating the lazy import.)
  */
 
-const PILL_RADIUS = 35;
-const PILL_HEIGHT = 70;
-const PILL_HIGHLIGHT_H = 52;
+const PILL_RADIUS = 28;
+const PILL_HEIGHT = 56;
+const PILL_HIGHLIGHT_H = 42;
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -76,7 +76,7 @@ function TabIcon({
   // active tab and slides it between tabs (see GlassTabBar).
   return (
     <View style={styles.iconPill}>
-      <Ionicons name={focused ? name : outlineName} size={22} color={color} />
+      <Ionicons name={focused ? name : outlineName} size={20} color={color} />
       <Text style={[styles.tabLabel, { color }]}>{label}</Text>
     </View>
   );
@@ -211,7 +211,7 @@ function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
             height: PILL_HIGHLIGHT_H,
             width: pillW,
             transform: [{ translateX: animX }],
-            borderRadius: 16,
+            borderRadius: 14,
             backgroundColor: isDark
               ? "rgba(255,255,255,0.16)"
               : "rgba(0,0,0,0.07)",
@@ -331,8 +331,8 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   bar: {
     position: "absolute",
-    left: 18,
-    right: 18,
+    left: 10,
+    right: 10,
     height: PILL_HEIGHT,
     borderRadius: PILL_RADIUS,
     flexDirection: "row",
@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 4,
     borderRadius: 999,
   },
   tabLabel: {
