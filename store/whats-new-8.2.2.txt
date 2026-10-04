@@ -1,0 +1,5 @@
+## What's new in this version
+• The tab bar is now Apple's own built-in iOS tab bar — real Liquid Glass on iOS 26, with the tab titles laid out by the system so nothing ever wraps or hides.
+• Dropdowns are now the built-in iOS and Android menus: tap a product option or Appearance and pick from the system's own list, with a checkmark on your current choice.
+• Screens scroll all the way to the bottom again — nothing hides behind the tab bar anymore.
+Questions or concerns? Email us at contact@beatrackfam.info

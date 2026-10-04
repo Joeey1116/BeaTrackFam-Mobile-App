@@ -25,8 +25,8 @@ export default function TabsLayout() {
       tintColor={colors.text}
       iconColor={{ default: colors.textDim, selected: colors.text }}
       labelStyle={{
-        default: { color: colors.textDim },
-        selected: { color: colors.text },
+        default: { color: colors.textDim, fontWeight: "500" },
+        selected: { color: colors.text, fontWeight: "700" },
       }}
     >
       <NativeTabs.Trigger

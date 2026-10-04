@@ -82,7 +82,7 @@ class MenuBoundary extends React.Component<
 }
 
 export function NativeDropdown(props: DropdownProps) {
-  const { value, options, onSelect, accessibilityLabel } = props;
+  const { value, options, onSelect, sheetTitle, accessibilityLabel } = props;
   const { colors } = useTheme();
 
   const jsMenu = <AnchoredMenuDropdown {...props} />;
@@ -99,13 +99,16 @@ export function NativeDropdown(props: DropdownProps) {
     <MenuBoundary fallback={jsMenu}>
       <MenuView
         style={{ alignSelf: "stretch" }}
+        title={sheetTitle}
         actions={options.map((option) => ({
           id: option.value,
           title: option.label,
           state: option.value === value ? "on" : "off",
         }))}
         onPressAction={({ nativeEvent }) => {
-          if (nativeEvent.event) onSelect(nativeEvent.event);
+          if (nativeEvent.event && nativeEvent.event !== value) {
+            onSelect(nativeEvent.event);
+          }
         }}
       >
         <View
@@ -115,6 +118,8 @@ export function NativeDropdown(props: DropdownProps) {
           ]}
           accessibilityRole="button"
           accessibilityLabel={accessibilityLabel}
+          accessibilityValue={{ text: selectedLabel }}
+          accessibilityHint="Opens a menu of choices"
         >
           <Text style={[styles.fieldValue, { color: colors.text }]} numberOfLines={1}>
             {selectedLabel}
@@ -225,7 +230,7 @@ function AnchoredMenuDropdown({ value, options, onSelect, accessibilityLabel }: 
                   bounces={false}
                   showsVerticalScrollIndicator={options.length > 8}
                 >
-                  {options.map((option) => {
+                  {options.map((option, idx) => {
                     const selected = option.value === value;
                     return (
                       <Pressable
@@ -233,6 +238,11 @@ function AnchoredMenuDropdown({ value, options, onSelect, accessibilityLabel }: 
                         onPress={() => pick(option.value)}
                         style={({ pressed }) => [
                           styles.row,
+                          idx > 0 && {
+                            borderTopWidth: StyleSheet.hairlineWidth,
+                            borderTopColor: colors.border,
+                          },
+                          selected && { backgroundColor: colors.input },
                           pressed && { backgroundColor: colors.surface },
                         ]}
                         accessibilityRole="button"
@@ -276,7 +286,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.md,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
+    minHeight: 48,
   },
   fieldValue: {
     flex: 1,
@@ -304,6 +315,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 12,
     paddingHorizontal: 14,
+    minHeight: 48,
   },
   checkSlot: { width: 26, alignItems: "flex-start", justifyContent: "center" },
   rowText: { flex: 1, fontSize: 16, fontWeight: "500" },
