@@ -1,0 +1,4 @@
+## What's new in this version
+• Liquid glass tab bar: the tab bar is now a floating glass pill that hovers over the shop — the highlight glides between tabs when you switch, just like the latest iOS apps.
+• The glass finally reads as glass in dark mode too, with your tab names (Home, Collections, Wishlist, Settings) right on the pill.
+Questions or concerns? Email us at contact@beatrackfam.info
