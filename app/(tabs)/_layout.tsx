@@ -55,6 +55,7 @@ type BlurViewType = typeof import("expo-blur")["BlurView"];
 
 const PILL_RADIUS = 35;
 const PILL_HEIGHT = 70;
+const PILL_HIGHLIGHT_H = 54;
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -115,41 +116,32 @@ function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
   const bottomOffset = Math.max(insets.bottom + 4, 16);
 
   // Sliding highlight: one pill behind the active tab that springs to
-  // the next tab on switch (the liquid-glass motion). Width hugs each
-  // tab's icon + label, measured as the tabs lay out.
+  // the next tab on switch (the liquid-glass motion). The pill is the
+  // SAME rectangle for every tab, centered on the tab, with the tab's
+  // icon + label centered inside it.
   const [barW, setBarW] = useState(0);
-  const iconMetrics = useRef<Record<number, { w: number; h: number }>>({});
   const [animX] = useState(() => new Animated.Value(0));
-  const [animW] = useState(() => new Animated.Value(72));
-  const [pillH, setPillH] = useState(54);
   const snapped = useRef(false);
+
+  const tabCount = state.routes.length;
+  const tabW = barW > 0 ? barW / tabCount : 0;
+  const pillW = Math.max(tabW - 14, 0);
 
   useEffect(() => {
     if (barW <= 0) return;
-    const tabW = barW / state.routes.length;
-    const m = iconMetrics.current[state.index] ?? { w: 72, h: 54 };
-    const toX = state.index * tabW + (tabW - m.w) / 2;
+    const toX = state.index * tabW + (tabW - pillW) / 2;
     if (!snapped.current) {
       snapped.current = true;
       animX.setValue(toX);
-      animW.setValue(m.w);
       return;
     }
-    Animated.parallel([
-      Animated.spring(animX, {
-        toValue: toX,
-        tension: 110,
-        friction: 11,
-        useNativeDriver: false,
-      }),
-      Animated.spring(animW, {
-        toValue: m.w,
-        tension: 110,
-        friction: 11,
-        useNativeDriver: false,
-      }),
-    ]).start();
-  }, [state.index, barW, animX, animW, state.routes.length]);
+    Animated.spring(animX, {
+      toValue: toX,
+      tension: 110,
+      friction: 11,
+      useNativeDriver: false,
+    }).start();
+  }, [state.index, barW, tabW, pillW, animX]);
 
   return (
     <View
@@ -204,16 +196,17 @@ function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
         </View>
       </View>
 
-      {/* Sliding highlight pill (behind the tabs, above the glass). */}
+      {/* Sliding highlight pill (behind the tabs, above the glass):
+          one uniform rectangle, centered on the active tab. */}
       {barW > 0 && (
         <Animated.View
           pointerEvents="none"
           style={{
             position: "absolute",
-            top: (PILL_HEIGHT - pillH) / 2,
+            top: (PILL_HEIGHT - PILL_HIGHLIGHT_H) / 2,
             left: 0,
-            height: pillH,
-            width: animW,
+            height: PILL_HIGHLIGHT_H,
+            width: pillW,
             transform: [{ translateX: animX }],
             borderRadius: 999,
             backgroundColor: isDark
@@ -254,19 +247,7 @@ function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
             }
             style={styles.tab}
           >
-            <View
-              onLayout={(e) => {
-                iconMetrics.current[index] = {
-                  w: e.nativeEvent.layout.width,
-                  h: e.nativeEvent.layout.height,
-                };
-                if (index === state.index) {
-                  setPillH(e.nativeEvent.layout.height);
-                }
-              }}
-            >
-              {options.tabBarIcon?.({ focused, color, size: 22 })}
-            </View>
+            {options.tabBarIcon?.({ focused, color, size: 22 })}
           </Pressable>
         );
       })}
