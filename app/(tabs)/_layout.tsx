@@ -1,9 +1,46 @@
 import React, { useEffect, useState } from "react";
-import { Platform, StyleSheet, Text, View, type ColorValue } from "react-native";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ColorValue,
+} from "react-native";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../components/ThemeProvider";
+
+/** Minimal shape of the props React Navigation hands a custom tab bar. */
+type GlassTabBarProps = {
+  state: {
+    index: number;
+    routes: { key: string; name: string; params?: object }[];
+  };
+  descriptors: Record<
+    string,
+    {
+      options: {
+        title?: string;
+        tabBarAccessibilityLabel?: string;
+        tabBarIcon?: (props: {
+          focused: boolean;
+          color: string;
+          size: number;
+        }) => React.ReactNode;
+      };
+    }
+  >;
+  navigation: {
+    emit(event: {
+      type: string;
+      target?: string;
+      canPreventDefault?: boolean;
+    }): unknown;
+    navigate(name: string, params?: object): void;
+  };
+};
 
 type BlurViewType = typeof import("expo-blur")["BlurView"];
 
@@ -52,7 +89,14 @@ function TabIcon({
   );
 }
 
-export default function TabsLayout() {
+/**
+ * Floating liquid-glass pill tab bar (Instagram-style): a frosted capsule
+ * detached from the screen edges, floating over scrolling content, with
+ * a light wash + hairline edge so the glass reads even over black.
+ * Fully custom bar (not the stock one) so the icon + label group sits
+ * dead-center in the pill with the highlight wrapped around both.
+ */
+function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [BlurView, setBlurView] = useState<BlurViewType | null>(null);
@@ -79,78 +123,101 @@ export default function TabsLayout() {
   const bottomOffset = Math.max(insets.bottom + 4, 16);
 
   return (
+    <View style={[styles.bar, { bottom: bottomOffset }]}>
+      {/* Glass background: shadow shell + clipped blur/tint + edge. */}
+      <View style={[StyleSheet.absoluteFill, styles.shadowWrap]}>
+        <View style={[StyleSheet.absoluteFill, styles.clip]}>
+          {showBlur && BlurView ? (
+            <BlurView
+              intensity={75}
+              tint={isDark ? "dark" : "light"}
+              style={StyleSheet.absoluteFill}
+            />
+          ) : (
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: isDark
+                    ? "rgba(20,20,24,0.85)"
+                    : "rgba(250,250,252,0.88)",
+                },
+              ]}
+            />
+          )}
+          {/* Tint wash: keeps the glass visible on dark screens,
+              where a bare blur of black would look like a slab. */}
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: isDark
+                  ? "rgba(255,255,255,0.05)"
+                  : "rgba(255,255,255,0.22)",
+              },
+            ]}
+          />
+          {/* Hairline glass edge. */}
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              styles.ring,
+              {
+                borderColor: isDark
+                  ? "rgba(255,255,255,0.16)"
+                  : "rgba(0,0,0,0.08)",
+              },
+            ]}
+          />
+        </View>
+      </View>
+
+      {state.routes.map((route, index) => {
+        const options = descriptors[route.key].options;
+        const focused = state.index === index;
+        const color = focused ? colors.text : colors.textDim;
+
+        const onPress = () => {
+          const event = navigation.emit({
+            type: "tabPress",
+            target: route.key,
+            canPreventDefault: true,
+          }) as { defaultPrevented?: boolean };
+          if (!focused && !event.defaultPrevented) {
+            navigation.navigate(route.name, route.params);
+          }
+        };
+        const onLongPress = () => {
+          navigation.emit({ type: "tabLongPress", target: route.key });
+        };
+
+        return (
+          <Pressable
+            key={route.key}
+            onPress={onPress}
+            onLongPress={onLongPress}
+            accessibilityRole="button"
+            accessibilityState={{ selected: focused }}
+            accessibilityLabel={
+              options.tabBarAccessibilityLabel ?? options.title ?? route.name
+            }
+            style={styles.tab}
+          >
+            {options.tabBarIcon?.({ focused, color, size: 22 })}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+export default function TabsLayout() {
+  const { isDark } = useTheme();
+
+  return (
     <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarShowLabel: false,
-        // Liquid glass pill: a frosted capsule floating over content,
-        // detached from the screen edges (Instagram-style), with a light
-        // wash + hairline edge so the glass reads even over black.
-        tabBarBackground: () => (
-          <View style={[StyleSheet.absoluteFill, styles.shadowWrap]}>
-            <View style={[StyleSheet.absoluteFill, styles.clip]}>
-              {showBlur && BlurView ? (
-                <BlurView
-                  intensity={75}
-                  tint={isDark ? "dark" : "light"}
-                  style={StyleSheet.absoluteFill}
-                />
-              ) : (
-                <View
-                  style={[
-                    StyleSheet.absoluteFill,
-                    {
-                      backgroundColor: isDark
-                        ? "rgba(20,20,24,0.85)"
-                        : "rgba(250,250,252,0.88)",
-                    },
-                  ]}
-                />
-              )}
-              {/* Tint wash: keeps the glass visible on dark screens,
-                  where a bare blur of black would look like a slab. */}
-              <View
-                style={[
-                  StyleSheet.absoluteFill,
-                  {
-                    backgroundColor: isDark
-                      ? "rgba(255,255,255,0.05)"
-                      : "rgba(255,255,255,0.22)",
-                  },
-                ]}
-              />
-              {/* Hairline glass edge. */}
-              <View
-                style={[
-                  StyleSheet.absoluteFill,
-                  styles.ring,
-                  {
-                    borderColor: isDark
-                      ? "rgba(255,255,255,0.16)"
-                      : "rgba(0,0,0,0.08)",
-                  },
-                ]}
-              />
-            </View>
-          </View>
-        ),
-        tabBarStyle: {
-          position: "absolute",
-          left: 18,
-          right: 18,
-          bottom: bottomOffset,
-          height: PILL_HEIGHT,
-          borderRadius: PILL_RADIUS,
-          backgroundColor: "transparent",
-          borderTopWidth: 0,
-          elevation: 0,
-          paddingTop: 0,
-          paddingBottom: 0,
-        },
-        tabBarItemStyle: { paddingVertical: 0 },
-        tabBarActiveTintColor: colors.text,
-        tabBarInactiveTintColor: colors.textDim,
-      }}
+      tabBar={(props) => <GlassTabBar {...props} />}
+      screenOptions={{ headerShown: false, tabBarShowLabel: false }}
     >
       <Tabs.Screen
         name="index"
@@ -221,6 +288,16 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
+  bar: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    height: PILL_HEIGHT,
+    borderRadius: PILL_RADIUS,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 6,
+  },
   shadowWrap: {
     borderRadius: PILL_RADIUS,
     shadowColor: "#000",
@@ -237,10 +314,17 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: PILL_RADIUS,
   },
+  tab: {
+    flex: 1,
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   iconPill: {
     alignItems: "center",
-    paddingHorizontal: 13,
-    paddingVertical: 5,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 999,
   },
   tabLabel: {
