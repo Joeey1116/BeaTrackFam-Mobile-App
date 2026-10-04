@@ -1,0 +1,6 @@
+## What's new in this version
+• Real Liquid Glass tab bar: on iOS 26 the tab bar is now Apple's genuine Liquid Glass — it bends the light of whatever scrolls behind it, and the glass highlight glides between tabs.
+• Easier product options: long option lists (like sizes) now open in the built-in dropdown instead of a swipe-left row.
+• Appearance is a dropdown too — pick Light, Dark, or System right in Settings.
+• Reviews: writing a review now asks you to log in, so your review posts under your own account name and email.
+Questions or concerns? Email us at contact@beatrackfam.info
