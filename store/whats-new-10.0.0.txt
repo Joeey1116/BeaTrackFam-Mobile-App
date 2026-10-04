@@ -1,0 +1,11 @@
+## What's new in this version
+• A whole new BeaTrackFam app, rebuilt from the ground up — faster, smoother, and fully native on iPhone and Android.
+• Shop the full catalog: browse Home and Collections, open any product, pick your options, and check out without leaving the app.
+• Your own BeaTrackFam account: sign up once and your login follows you — delete the app, reinstall it, and just log back in.
+• Profiles with saved addresses, interests, and in-app order history tied to your account.
+• Forgot your password? Reset it with a 6-digit code emailed to you.
+• Product reviews: read what the Fam is saying, and share your own when you're logged in.
+• Apple's Liquid Glass tab bar on iOS 26, with full-width dropdown menus for product options and Appearance.
+• Light, Dark, or System appearance — your call.
+• Wishlist, guest browsing, Share App, Support, and Custom Design Requests, all in Settings.
+Questions or concerns? Email us at contact@beatrackfam.info
