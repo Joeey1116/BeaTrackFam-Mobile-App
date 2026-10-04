@@ -44,18 +44,23 @@ type GlassTabBarProps = {
 };
 
 type BlurViewType = typeof import("expo-blur")["BlurView"];
+type GlassViewType = typeof import("expo-glass-effect")["GlassView"];
 
 /**
- * expo-blur is a native module, loaded lazily inside a try: on a native
- * build where it isn't linked the import throws, and the tab bar falls
- * back to a translucent pill instead of crashing when the tabs mount.
- * (Crash-safety rule: no static native imports on the launch path, and
- * no TurboModuleRegistry name probe gating the lazy import.)
+ * Native modules, loaded lazily inside a try: on a native build where
+ * one isn't linked the import throws, and the tab bar falls back
+ * instead of crashing when the tabs mount. (Crash-safety rule: no
+ * static native imports on the launch path, and no
+ * TurboModuleRegistry name probe gating the lazy import.)
+ *
+ * Surface ladder: real iOS 26 Liquid Glass (expo-glass-effect) →
+ * expo-blur frost → translucent pill.
  */
 
-const PILL_RADIUS = 28;
-const PILL_HEIGHT = 56;
-const PILL_HIGHLIGHT_H = 42;
+const PILL_RADIUS = 32;
+const PILL_HEIGHT = 64;
+const PILL_HIGHLIGHT_H = 56;
+const HIGHLIGHT_RADIUS = 28;
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -76,7 +81,7 @@ function TabIcon({
   // active tab and slides it between tabs (see GlassTabBar).
   return (
     <View style={styles.iconPill}>
-      <Ionicons name={focused ? name : outlineName} size={20} color={color} />
+      <Ionicons name={focused ? name : outlineName} size={23} color={color} />
       <Text style={[styles.tabLabel, { color }]}>{label}</Text>
     </View>
   );
@@ -109,10 +114,38 @@ function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
     };
   }, []);
 
+  // Real Liquid Glass (expo-glass-effect) only where it truly exists:
+  // iOS 26+ with the API live at runtime. Both checks run after the
+  // lazy import resolves; anything else keeps the blur/tint ladder.
+  const [GlassView, setGlassView] = useState<GlassViewType | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const mod = await import("expo-glass-effect");
+        if (
+          !cancelled &&
+          Platform.OS === "ios" &&
+          mod.isLiquidGlassAvailable() &&
+          mod.isGlassEffectAPIAvailable()
+        ) {
+          setGlassView(() => mod.GlassView);
+        }
+      } catch {
+        // Stay on the blur/tint fallback.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Real blur only where it exists: expo-blur on iOS renders the system
   // frosted-glass material. On Android (or a build without blur linked)
   // the pill uses the translucent tint — same shape, no fake blur.
   const showBlur = BlurView !== null && Platform.OS === "ios";
+  const showGlass = GlassView !== null;
   const bottomOffset = Math.max(insets.bottom + 4, 16);
 
   // Sliding highlight: one pill behind the active tab that springs to
@@ -151,56 +184,69 @@ function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
       style={[styles.bar, { bottom: bottomOffset }]}
       onLayout={(e) => setBarW(e.nativeEvent.layout.width)}
     >
-      {/* Glass background: shadow shell + clipped blur/tint + edge. */}
+      {/* Bar surface: real iOS 26 Liquid Glass when available; else the
+          shadow shell + clipped blur/tint + hairline edge ladder. */}
       <View style={[StyleSheet.absoluteFill, styles.shadowWrap]}>
         <View style={[StyleSheet.absoluteFill, styles.clip]}>
-          {showBlur && BlurView ? (
-            <BlurView
-              intensity={75}
-              tint={isDark ? "dark" : "light"}
+          {showGlass && GlassView ? (
+            <GlassView
               style={StyleSheet.absoluteFill}
+              glassEffectStyle="regular"
+              colorScheme={isDark ? "dark" : "light"}
             />
           ) : (
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  backgroundColor: isDark
-                    ? "rgba(20,20,24,0.85)"
-                    : "rgba(250,250,252,0.88)",
-                },
-              ]}
-            />
+            <>
+              {showBlur && BlurView ? (
+                <BlurView
+                  intensity={75}
+                  tint={isDark ? "dark" : "light"}
+                  style={StyleSheet.absoluteFill}
+                />
+              ) : (
+                <View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    {
+                      backgroundColor: isDark
+                        ? "rgba(20,20,24,0.85)"
+                        : "rgba(250,250,252,0.88)",
+                    },
+                  ]}
+                />
+              )}
+              {/* Tint wash: keeps the glass visible on dark screens,
+                  where a bare blur of black would look like a slab. */}
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    backgroundColor: isDark
+                      ? "rgba(255,255,255,0.05)"
+                      : "rgba(255,255,255,0.22)",
+                  },
+                ]}
+              />
+              {/* Hairline glass edge. */}
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  styles.ring,
+                  {
+                    borderColor: isDark
+                      ? "rgba(255,255,255,0.16)"
+                      : "rgba(0,0,0,0.08)",
+                  },
+                ]}
+              />
+            </>
           )}
-          {/* Tint wash: keeps the glass visible on dark screens,
-              where a bare blur of black would look like a slab. */}
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              {
-                backgroundColor: isDark
-                  ? "rgba(255,255,255,0.05)"
-                  : "rgba(255,255,255,0.22)",
-              },
-            ]}
-          />
-          {/* Hairline glass edge. */}
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              styles.ring,
-              {
-                borderColor: isDark
-                  ? "rgba(255,255,255,0.16)"
-                  : "rgba(0,0,0,0.08)",
-              },
-            ]}
-          />
         </View>
       </View>
 
-      {/* Sliding highlight pill (behind the tabs, above the glass):
-          one uniform rectangle, centered on the active tab. */}
+      {/* Sliding highlight (behind the tabs, above the glass): one
+          uniform rounded rectangle, centered on the active tab. On
+          iOS 26 it's a real interactive Liquid Glass lens; elsewhere a
+          tint that matches it. */}
       {barW > 0 && (
         <Animated.View
           pointerEvents="none"
@@ -211,12 +257,31 @@ function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
             height: PILL_HIGHLIGHT_H,
             width: pillW,
             transform: [{ translateX: animX }],
-            borderRadius: 14,
-            backgroundColor: isDark
-              ? "rgba(255,255,255,0.16)"
-              : "rgba(0,0,0,0.07)",
           }}
-        />
+        >
+          {showGlass && GlassView ? (
+            <GlassView
+              style={styles.highlightFill}
+              glassEffectStyle="regular"
+              isInteractive
+              colorScheme={isDark ? "dark" : "light"}
+              tintColor={
+                isDark ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.45)"
+              }
+            />
+          ) : (
+            <View
+              style={[
+                styles.highlightFill,
+                {
+                  backgroundColor: isDark
+                    ? "rgba(255,255,255,0.16)"
+                    : "rgba(0,0,0,0.07)",
+                },
+              ]}
+            />
+          )}
+        </Animated.View>
       )}
 
       {state.routes.map((route, index) => {
@@ -331,14 +396,15 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   bar: {
     position: "absolute",
-    left: 10,
-    right: 10,
+    left: 20,
+    right: 20,
     height: PILL_HEIGHT,
     borderRadius: PILL_RADIUS,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 6,
   },
+  highlightFill: { flex: 1, borderRadius: HIGHLIGHT_RADIUS },
   shadowWrap: {
     borderRadius: PILL_RADIUS,
     shadowColor: "#000",
@@ -369,7 +435,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "600",
     marginTop: 1,
   },
