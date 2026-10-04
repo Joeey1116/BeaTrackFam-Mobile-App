@@ -24,7 +24,8 @@
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
-      ]
+      ],
+      "edgeToEdgeEnabled": true
     },
     "icon": "./assets/icon.png",
     "ios": {
@@ -38,7 +39,7 @@
       "buildNumber": "1001"
     },
     "name": "BeaTrackFam",
-    "orientation": "portrait",
+    "orientation": "default",
     "plugins": [
       "expo-router",
       "expo-font",
