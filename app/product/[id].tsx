@@ -12,7 +12,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "../../components/ThemeProvider";
 import { PrimaryButton, ScreenHeader } from "../../components/ui";
 import { CartButton } from "../../components/CartButton";
-import { SelectDropdown } from "../../components/SelectDropdown";
+import { NativeDropdown } from "../../components/NativeDropdown";
 import { ProductGallery } from "../../components/ProductGallery";
 import { Reviews } from "../../components/Reviews";
 import { useShop } from "../../store/shop";
@@ -180,7 +180,7 @@ export default function ProductDetails() {
                 </Text>
               </Text>
               {useDropdown ? (
-                <SelectDropdown
+                <NativeDropdown
                   value={effectiveSelected[opt.name] ?? ""}
                   options={opt.values.map((v) => ({ value: v, label: v }))}
                   onSelect={(val) =>

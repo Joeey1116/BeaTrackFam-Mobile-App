@@ -1,5 +1,5 @@
 /** Settings tab — profile card + menu hub with separate screens. */
-import React, { useState } from "react";
+import React from "react";
 import {
   Image,
   Pressable,
@@ -13,7 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useTheme, type ThemePreference } from "../../components/ThemeProvider";
 import { MenuRow, ScreenHeader, SectionLabel } from "../../components/ui";
-import { SelectSheet } from "../../components/SelectDropdown";
+import { NativeDropdown } from "../../components/NativeDropdown";
 import { useShop } from "../../store/shop";
 import { Radius, Spacing } from "../../constants/theme";
 
@@ -109,7 +109,6 @@ export default function SettingsHub() {
   const { colors, theme, setTheme } = useTheme();
   const router = useRouter();
   const { account } = useShop();
-  const [appearanceOpen, setAppearanceOpen] = useState(false);
 
   const icon = (name: React.ComponentProps<typeof Ionicons>["name"]) => (
     <Ionicons name={name} size={20} color={colors.text} />
@@ -156,18 +155,43 @@ export default function SettingsHub() {
 
         <SectionLabel text="APP" />
 
-        <MenuRow
-          icon={icon(
-            theme === "dark"
-              ? "moon-outline"
-              : theme === "light"
-                ? "sunny-outline"
-                : "phone-portrait-outline"
-          )}
-          title="Appearance"
-          subtitle={THEME_LABELS[theme]}
-          onPress={() => setAppearanceOpen(true)}
-        />
+        <View
+          style={[styles.dropdownCard, { backgroundColor: colors.surface }]}
+        >
+          <View style={styles.dropdownHead}>
+            <View
+              style={[
+                styles.dropdownIcon,
+                { backgroundColor: colors.surfaceRaised },
+              ]}
+            >
+              {icon(
+                theme === "dark"
+                  ? "moon-outline"
+                  : theme === "light"
+                    ? "sunny-outline"
+                    : "phone-portrait-outline"
+              )}
+            </View>
+            <View style={styles.dropdownTextWrap}>
+              <Text style={[styles.dropdownTitle, { color: colors.text }]}>
+                Appearance
+              </Text>
+              <Text
+                style={[styles.dropdownSubtitle, { color: colors.textMuted }]}
+              >
+                {THEME_LABELS[theme]}
+              </Text>
+            </View>
+          </View>
+          <NativeDropdown
+            value={theme}
+            options={THEME_OPTIONS}
+            onSelect={(v) => setTheme(v as ThemePreference)}
+            sheetTitle="Appearance"
+            accessibilityLabel="Appearance"
+          />
+        </View>
         <MenuRow
           icon={icon("information-circle-outline")}
           title="App Settings"
@@ -202,15 +226,6 @@ export default function SettingsHub() {
           </>
         )}
       </ScrollView>
-
-      <SelectSheet
-        visible={appearanceOpen}
-        title="Appearance"
-        options={THEME_OPTIONS}
-        selectedValue={theme}
-        onSelect={(v) => setTheme(v as ThemePreference)}
-        onClose={() => setAppearanceOpen(false)}
-      />
     </View>
   );
 }
@@ -218,6 +233,26 @@ export default function SettingsHub() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   content: { padding: Spacing.md, paddingBottom: Spacing.xl },
+  dropdownCard: {
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  dropdownHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+  },
+  dropdownIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dropdownTextWrap: { flex: 1 },
+  dropdownTitle: { fontSize: 16, fontWeight: "700" },
+  dropdownSubtitle: { fontSize: 13, marginTop: 2 },
   profileCard: {
     flexDirection: "row",
     alignItems: "center",
