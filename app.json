@@ -56,6 +56,15 @@
         {
           "locationWhenInUsePermission": "BeaTrackFam uses your location to personalize delivery options and show relevant availability."
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
       ]
     ],
     "scheme": [
