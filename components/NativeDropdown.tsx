@@ -1,181 +1,233 @@
 /**
- * NativeDropdown — the BUILT-IN OS dropdown (@react-native-picker/picker).
- * No custom option list (Joey, Oct 4 2026):
- * - Android / web: the native dropdown field itself (mode="dropdown").
- * - iOS: a field that opens a sheet holding the native wheel picker
- *   with a Done button — the standard iOS presentation of the built-in
- *   picker control.
+ * NativeDropdown — a dropdown that opens a floating menu anchored to the
+ * field: the iOS-style popup list (frosted card, checkmark on the current
+ * choice, selected label bold). Joey, Oct 4 2026 picked this exact shape
+ * from a reference screenshot after the wheel-picker pass.
+ *
+ * Implemented in pure JS (Modal + measured field position) on purpose: the
+ * previous pass delegated to @react-native-picker/picker, whose native view
+ * was missing from Joey's build and rendered "Unimplemented component:
+ * <RNCPicker>" on device. This version has no native-menu dependency, so it
+ * renders identically on iOS / Android / web and cannot fail that way.
+ * Frost comes from expo-blur, loaded lazily — if a build ever lacks it, the
+ * card just renders solid.
  */
-import React, { useState } from "react";
+import React, { useRef, useState, type ComponentType } from "react";
 import {
   Modal,
-  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "./ThemeProvider";
 import { Radius, Spacing } from "../constants/theme";
+
+// expo-blur's native view, loaded lazily so a build without it falls back to
+// the solid card instead of crashing (same pattern as the tab bar).
+let BlurView: ComponentType<any> | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  BlurView = require("expo-blur").BlurView ?? null;
+} catch {
+  BlurView = null;
+}
 
 export interface NativeDropdownOption {
   value: string;
   label: string;
 }
 
+type FieldPos = { x: number; y: number; width: number; height: number };
+
 export function NativeDropdown({
   value,
   options,
   onSelect,
-  sheetTitle,
   accessibilityLabel,
 }: {
   /** Currently selected option value. */
   value: string;
   options: NativeDropdownOption[];
   onSelect: (value: string) => void;
+  /** Kept for call-site compatibility — the anchored menu doesn't use it. */
   sheetTitle?: string;
   accessibilityLabel?: string;
 }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  const fieldRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
-  const selectedLabel =
-    options.find((o) => o.value === value)?.label ?? value;
+  const [pos, setPos] = useState<FieldPos | null>(null);
 
-  // Android + web: the picker IS the dropdown field.
-  if (Platform.OS !== "ios") {
-    return (
-      <View
-        style={[
-          styles.androidField,
-          { borderColor: colors.border, backgroundColor: colors.input },
-        ]}
-      >
-        <Picker
-          selectedValue={value}
-          onValueChange={(v) => onSelect(String(v))}
-          mode="dropdown"
-          dropdownIconColor={colors.textMuted}
-          style={{ color: colors.text }}
-          accessibilityLabel={accessibilityLabel}
-        >
-          {options.map((opt) => (
-            <Picker.Item key={opt.value} label={opt.label} value={opt.value} />
-          ))}
-        </Picker>
-      </View>
-    );
-  }
+  const selectedLabel = options.find((o) => o.value === value)?.label ?? value;
 
-  // iOS: field → sheet with the native wheel picker.
+  const openMenu = () => {
+    if (fieldRef.current && typeof fieldRef.current.measureInWindow === "function") {
+      fieldRef.current.measureInWindow((x, y, width, height) => {
+        setPos({ x, y, width, height });
+        setOpen(true);
+      });
+    } else {
+      setPos(null);
+      setOpen(true);
+    }
+  };
+
+  const pick = (optionValue: string) => {
+    setOpen(false);
+    onSelect(optionValue);
+  };
+
+  // Menu geometry: same width as the field (clamped to the screen with a
+  // margin), opening below the field — or above it when space runs out.
+  const menuWidth = pos ? Math.min(pos.width, screenW - Spacing.md * 2) : 0;
+  const menuLeft = pos
+    ? Math.max(Spacing.md, Math.min(pos.x, screenW - menuWidth - Spacing.md))
+    : Spacing.md;
+  const maxMenuH = Math.round(screenH * 0.52);
+  // Estimated natural height (rows are ~48pt) so an upward-opening menu sits
+  // flush against the field instead of floating at the max-height offset.
+  const contentH = Math.min(maxMenuH, options.length * 48);
+  const belowTop = pos ? pos.y + pos.height + 6 : 0;
+  const spaceBelow = screenH - belowTop - Spacing.md;
+  const openUpward = pos !== null && spaceBelow < Math.min(maxMenuH, 220) && pos.y > maxMenuH;
+  const menuTop = openUpward && pos ? Math.max(Spacing.md, pos.y - contentH - 6) : belowTop;
+
   return (
     <>
-      <Pressable
-        onPress={() => setOpen(true)}
-        style={[
-          styles.field,
-          { borderColor: colors.border, backgroundColor: colors.input },
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel ?? "Choose an option"}
-      >
-        <Text style={[styles.fieldText, { color: colors.text }]}>
-          {selectedLabel}
-        </Text>
-        <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
-      </Pressable>
+      <View ref={fieldRef} collapsable={false}>
+        <Pressable
+          onPress={openMenu}
+          style={[
+            styles.field,
+            { borderColor: colors.border, backgroundColor: colors.input },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+          accessibilityState={{ expanded: open }}
+        >
+          <Text style={[styles.fieldValue, { color: colors.text }]} numberOfLines={1}>
+            {selectedLabel}
+          </Text>
+          <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
+        </Pressable>
+      </View>
 
-      <Modal
-        visible={open}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setOpen(false)}
-      >
-        <View style={styles.modalRoot}>
-          <Pressable
-            style={styles.backdrop}
-            onPress={() => setOpen(false)}
-            accessibilityLabel="Close options"
-          />
-          <View style={[styles.sheet, { backgroundColor: colors.surface }]}>
-            <View style={styles.sheetHeader}>
-              <Text style={[styles.sheetTitle, { color: colors.text }]}>
-                {sheetTitle ?? "Choose"}
-              </Text>
-              <Pressable
-                onPress={() => setOpen(false)}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Done"
-              >
-                <Text style={[styles.doneText, { color: colors.text }]}>
-                  Done
-                </Text>
-              </Pressable>
-            </View>
-            <Picker
-              selectedValue={value}
-              onValueChange={(v) => onSelect(String(v))}
-              itemStyle={{ color: colors.text, fontSize: 19 }}
-              accessibilityLabel={accessibilityLabel}
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={() => setOpen(false)}
+          accessibilityLabel="Close menu"
+        >
+          {pos ? (
+            <View
+              style={[
+                styles.menuShadow,
+                { left: menuLeft, top: menuTop, width: menuWidth, maxHeight: maxMenuH },
+              ]}
             >
-              {options.map((opt) => (
-                <Picker.Item
-                  key={opt.value}
-                  label={opt.label}
-                  value={opt.value}
-                />
-              ))}
-            </Picker>
-          </View>
-        </View>
+              <View
+                style={[
+                  styles.menuCard,
+                  { borderColor: colors.border },
+                  !BlurView && { backgroundColor: colors.surfaceRaised },
+                ]}
+              >
+                {BlurView ? (
+                  <BlurView
+                    intensity={85}
+                    tint={isDark ? "dark" : "light"}
+                    style={StyleSheet.absoluteFill}
+                  />
+                ) : null}
+                <ScrollView
+                  bounces={false}
+                  showsVerticalScrollIndicator={options.length > 8}
+                >
+                  {options.map((option) => {
+                    const selected = option.value === value;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        onPress={() => pick(option.value)}
+                        style={({ pressed }) => [
+                          styles.row,
+                          pressed && { backgroundColor: colors.surface },
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                      >
+                        <View style={styles.checkSlot}>
+                          {selected ? (
+                            <Ionicons name="checkmark" size={18} color={colors.text} />
+                          ) : null}
+                        </View>
+                        <Text
+                          style={[
+                            styles.rowText,
+                            { color: colors.text },
+                            selected && { fontWeight: "700" },
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </View>
+          ) : null}
+        </Pressable>
       </Modal>
     </>
   );
 }
 
+const MENU_RADIUS = 22;
+
 const styles = StyleSheet.create({
-  androidField: {
-    borderWidth: 1.5,
-    borderRadius: Radius.md,
-    marginTop: Spacing.sm,
-    overflow: "hidden",
-  },
   field: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderRadius: Radius.md,
+    paddingHorizontal: 14,
     paddingVertical: 12,
-    paddingHorizontal: Spacing.md,
-    marginTop: Spacing.sm,
   },
-  fieldText: { fontSize: 15, fontWeight: "600" },
-  modalRoot: { flex: 1, justifyContent: "flex-end" },
-  backdrop: {
+  fieldValue: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    marginRight: 8,
+  },
+  backdrop: { flex: 1 },
+  menuShadow: {
     position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    borderRadius: MENU_RADIUS,
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 12,
   },
-  sheet: {
-    borderTopLeftRadius: Radius.lg,
-    borderTopRightRadius: Radius.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.lg,
-    paddingHorizontal: Spacing.md,
+  menuCard: {
+    borderRadius: MENU_RADIUS,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  sheetHeader: {
+  row: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: Spacing.xs,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
   },
-  sheetTitle: { fontSize: 16, fontWeight: "800" },
-  doneText: { fontSize: 16, fontWeight: "700" },
+  checkSlot: { width: 26, alignItems: "flex-start", justifyContent: "center" },
+  rowText: { flex: 1, fontSize: 16, fontWeight: "500" },
 });

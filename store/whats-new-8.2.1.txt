@@ -1,0 +1,4 @@
+## What's new in this version
+• Dropdowns fixed: product options and Appearance now open a clean glass dropdown menu — tap, pick, done. No more error banner.
+• Tab bar polish: the Collections label sits on one line again, and the Liquid Glass bar is tuned in.
+Questions or concerns? Email us at contact@beatrackfam.info

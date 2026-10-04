@@ -82,7 +82,14 @@ function TabIcon({
   return (
     <View style={styles.iconPill}>
       <Ionicons name={focused ? name : outlineName} size={23} color={color} />
-      <Text style={[styles.tabLabel, { color }]}>{label}</Text>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+        style={[styles.tabLabel, { color }]}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
@@ -430,7 +437,7 @@ const styles = StyleSheet.create({
   iconPill: {
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 2,
     paddingVertical: 4,
     borderRadius: 999,
   },
