@@ -55,7 +55,7 @@ type BlurViewType = typeof import("expo-blur")["BlurView"];
 
 const PILL_RADIUS = 35;
 const PILL_HEIGHT = 70;
-const PILL_HIGHLIGHT_H = 54;
+const PILL_HIGHLIGHT_H = 52;
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -124,12 +124,15 @@ function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
   const snapped = useRef(false);
 
   const tabCount = state.routes.length;
-  const tabW = barW > 0 ? barW / tabCount : 0;
-  const pillW = Math.max(tabW - 14, 0);
+  // Tabs live in the bar's content box (paddingHorizontal: 6), so all
+  // centering math is based on the inner width, not the full bar width.
+  const innerW = Math.max(barW - 12, 0);
+  const tabW = innerW > 0 ? innerW / tabCount : 0;
+  const pillW = Math.max(tabW - 10, 0);
 
   useEffect(() => {
     if (barW <= 0) return;
-    const toX = state.index * tabW + (tabW - pillW) / 2;
+    const toX = 6 + state.index * tabW + (tabW - pillW) / 2;
     if (!snapped.current) {
       snapped.current = true;
       animX.setValue(toX);
@@ -208,7 +211,7 @@ function GlassTabBar({ state, descriptors, navigation }: GlassTabBarProps) {
             height: PILL_HIGHLIGHT_H,
             width: pillW,
             transform: [{ translateX: animX }],
-            borderRadius: 999,
+            borderRadius: 16,
             backgroundColor: isDark
               ? "rgba(255,255,255,0.16)"
               : "rgba(0,0,0,0.07)",
