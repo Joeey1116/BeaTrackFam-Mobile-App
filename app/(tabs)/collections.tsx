@@ -17,7 +17,7 @@ import { CartButton } from "../../components/CartButton";
 import { ProductImage } from "../../components/ProductImage";
 import { useShop } from "../../store/shop";
 import { fetchCollectionProducts, type Collection, type Product } from "../../data/mock";
-import { Radius, Spacing } from "../../constants/theme";
+import { Radius, Spacing, TabBarClearance } from "../../constants/theme";
 
 function ShopProductCard({ product }: { product: Product }) {
   const { colors } = useTheme();
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: Spacing.xl, gap: Spacing.sm },
   centerText: { fontSize: 14, textAlign: "center" },
   retryWrap: { marginTop: Spacing.sm, minWidth: 140 },
-  content: { padding: Spacing.md, paddingBottom: Spacing.xl },
+  content: { padding: Spacing.md, paddingBottom: TabBarClearance },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",

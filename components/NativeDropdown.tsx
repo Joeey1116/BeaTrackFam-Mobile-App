@@ -1,24 +1,20 @@
 /**
- * NativeDropdown — tapping the field opens the BUILT-IN OS dropdown
- * menu: Apple's own popup on iOS (the frosted Liquid Glass list with a
- * checkmark on the current choice — the same control his Shopify site
- * uses in Safari) and the Material dropdown on Android.
+ * NativeDropdown — tapping the field opens an anchored dropdown menu:
+ * a frosted card the FULL WIDTH of the field, hanging right off it,
+ * with a checkmark + bold label on the current choice — the same look
+ * as his Shopify site's dropdown in Safari.
  *
- * Implemented with MenuView from @expo/ui (first-party Expo UI). The
- * trigger is our usual bordered field; the menu itself is drawn 100%
- * by the operating system.
- *
- * Two fallbacks keep this from ever being the problem again:
- * - Web (previews): the anchored JS menu below.
- * - If the @expo/ui native view somehow isn't in a build, the error
- *   boundary swaps in that same JS menu instead of showing a red
- *   "Unimplemented component" banner. (Oct 4 2026: the old
- *   @react-native-picker wheel threw exactly that on Joey's phone.)
+ * Oct 4 2026 history: first shipped as @react-native-picker's wheel
+ * (Joey hated it, and it threw "Unimplemented component: <RNCPicker>"
+ * on his phone), then as @expo/ui's MenuView — the real OS menu, but
+ * iOS draws it as a small popup hugging the left edge. Joey's call:
+ * full wide, not small to the left. So the anchored menu (pure JS,
+ * renders identically on iOS/Android/web, can never throw a native
+ * linking error) is the dropdown everywhere.
  */
-import React, { useRef, useState, type ComponentType, type ReactNode } from "react";
+import React, { useRef, useState, type ComponentType } from "react";
 import {
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,13 +23,11 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { MenuView } from "@expo/ui/community/menu";
 import { useTheme } from "./ThemeProvider";
 import { Radius, Spacing } from "../constants/theme";
 
-// expo-blur's native view (for the web/fallback menu's frost), loaded
-// lazily so a build without it falls back to the solid card instead
-// of crashing (same pattern as the tab bar).
+// expo-blur's native view (the menu card's frost), loaded lazily so a
+// build without it falls back to the solid card instead of crashing.
 let BlurView: ComponentType<any> | null = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -57,86 +51,17 @@ type DropdownProps = {
   accessibilityLabel?: string;
 };
 
-/**
- * If the native menu view throws while rendering (its native module
- * isn't in the running build), quietly swap in the JS menu — never a
- * red error banner.
- */
-class MenuBoundary extends React.Component<
-  { fallback: ReactNode; children: ReactNode },
-  { failed: boolean }
-> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  componentDidCatch() {
-    // Native menu unavailable in this build — JS menu takes over.
-  }
-
-  render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
-  }
-}
-
 export function NativeDropdown(props: DropdownProps) {
-  const { value, options, onSelect, sheetTitle, accessibilityLabel } = props;
-  const { colors } = useTheme();
-
-  const jsMenu = <AnchoredMenuDropdown {...props} />;
-
-  // Web has no OS menu — use the anchored JS menu there (also what the
-  // web preview shows).
-  if (Platform.OS === "web") {
-    return jsMenu;
-  }
-
-  const selectedLabel = options.find((o) => o.value === value)?.label ?? value;
-
-  return (
-    <MenuBoundary fallback={jsMenu}>
-      <MenuView
-        style={{ alignSelf: "stretch" }}
-        title={sheetTitle}
-        actions={options.map((option) => ({
-          id: option.value,
-          title: option.label,
-          state: option.value === value ? "on" : "off",
-        }))}
-        onPressAction={({ nativeEvent }) => {
-          if (nativeEvent.event && nativeEvent.event !== value) {
-            onSelect(nativeEvent.event);
-          }
-        }}
-      >
-        <View
-          style={[
-            styles.field,
-            { borderColor: colors.border, backgroundColor: colors.input },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel}
-          accessibilityValue={{ text: selectedLabel }}
-          accessibilityHint="Opens a menu of choices"
-        >
-          <Text style={[styles.fieldValue, { color: colors.text }]} numberOfLines={1}>
-            {selectedLabel}
-          </Text>
-          <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
-        </View>
-      </MenuView>
-    </MenuBoundary>
-  );
+  // The full-width anchored menu is the dropdown on every platform —
+  // see the header comment for why the small OS popup was replaced.
+  return <AnchoredMenuDropdown {...props} />;
 }
 
 type FieldPos = { x: number; y: number; width: number; height: number };
 
 /**
- * The anchored JS menu (frosted card, checkmark + bold on the current
- * choice). Used on web and as the emergency fallback if the native
- * menu view is ever unavailable in a build.
+ * The anchored menu: a frosted card the full width of the field,
+ * hanging right off it, checkmark + bold on the current choice.
  */
 function AnchoredMenuDropdown({ value, options, onSelect, accessibilityLabel }: DropdownProps) {
   const { colors, isDark } = useTheme();

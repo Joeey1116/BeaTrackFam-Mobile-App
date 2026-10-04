@@ -8,13 +8,17 @@
  * offline-first on the device.
  *
  * Honesty contract (do not weaken):
- * - These accounts live ON THIS DEVICE ONLY (AsyncStorage). They are not
- *   cloud accounts — signing in on another phone won't carry them over.
- *   The UI must say so wherever accounts are created.
- * - Passwords are stored as salted SHA-256 hashes, never plaintext. This
- *   is appropriate for device-local data (sandboxed storage + device
- *   encryption), NOT server-grade password storage — and we never claim
- *   otherwise.
+ * - Accounts are REGISTERED with the BeaTrackFam accounts worker
+ *   (workers/accounts, lib/accountSync.ts) whenever the phone is
+ *   online: delete the app, reinstall it, log in with the same email
+ *   and you're back in. The phone keeps a local copy as its session
+ *   store and offline fallback — profile extras (addresses,
+ *   interests, receipts) live in that local copy and in Shopify, not
+ *   in the registry; the registry holds name + email + password hash.
+ * - If the worker is unreachable or not deployed yet, everything
+ *   still works device-locally exactly as before, and pre-registry
+ *   accounts register themselves on their owner's next login.
+ * - Passwords are stored as salted SHA-256 hashes, never plaintext.
  * - Orders are linked to Shopify at CHECKOUT TIME: the buyer's name,
  *   email, phone and shipping address are attached to the Shopify
  *   Storefront cart as buyer identity (see lib/storefront.ts), so the
@@ -26,6 +30,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 import type { LocalProfile } from "./customer";
 import { EMPTY_PROFILE } from "./customer";
+import {
+  changeRemotePassword,
+  deleteRemoteAccount,
+  isAccountSyncConfigured,
+  loginRemoteAccount,
+  registerRemoteAccount,
+  remoteAccountExists,
+  syncRemotePassword,
+} from "./accountSync";
 
 const ACCOUNTS_KEY = "beatrackfam-app-accounts-v1";
 const SESSION_KEY = "beatrackfam-app-account-session-v1";
@@ -160,6 +173,19 @@ export async function createAccount(input: {
     };
   }
 
+  // Registered before (e.g. on a phone since wiped)? Don't duplicate —
+  // logging in is the way back in.
+  if (isAccountSyncConfigured()) {
+    const existsRemotely = await remoteAccountExists(email);
+    if (existsRemotely) {
+      return {
+        ok: false,
+        reason:
+          "This email is already registered — log in instead. Your account works on any phone.",
+      };
+    }
+  }
+
   const saltBytes = await Crypto.getRandomBytesAsync(16);
   const salt = bytesToHex(saltBytes);
   const passwordHash = await hashPassword(input.password, salt);
@@ -183,10 +209,13 @@ export async function createAccount(input: {
   accounts[email] = account;
   await writeAccounts(accounts);
   await AsyncStorage.setItem(SESSION_KEY, account.id).catch(() => {});
+  // Register with the accounts worker so this login survives an app
+  // reinstall. Best-effort: offline sign-ups register on next login.
+  void registerRemoteAccount({ name, email, password: input.password });
   return { ok: true, account: sanitizeAccount(account) };
 }
 
-/** Signs in to a device-local account. */
+/** Signs in — registry first (works on a fresh install), device-local fallback. */
 export async function signIn(input: {
   email: string;
   password: string;
@@ -196,6 +225,50 @@ export async function signIn(input: {
     return { ok: false, reason: "Enter a valid email address." };
   }
   const accounts = await readAccounts();
+
+  // The registry is the source of truth when it's reachable — it's
+  // what lets someone delete the app, reinstall, and just log in.
+  if (isAccountSyncConfigured()) {
+    const remote = await loginRemoteAccount({
+      email,
+      password: input.password,
+    });
+    if (remote.status === "ok") {
+      const saltBytes = await Crypto.getRandomBytesAsync(16);
+      const salt = bytesToHex(saltBytes);
+      const passwordHash = await hashPassword(input.password, salt);
+      let account = accounts[email];
+      if (account) {
+        // Keep the local copy in step with the verified password.
+        account = { ...account, salt, passwordHash };
+      } else {
+        const [firstName, ...rest] = remote.name.trim().split(/\s+/);
+        account = {
+          id: `acct-${Date.now()}`,
+          email,
+          passwordHash,
+          salt,
+          createdAt: new Date().toISOString(),
+          profile: {
+            ...EMPTY_PROFILE,
+            firstName: firstName ?? "",
+            lastName: rest.join(" "),
+          },
+          orders: [],
+        };
+      }
+      accounts[email] = account;
+      await writeAccounts(accounts);
+      await AsyncStorage.setItem(SESSION_KEY, account.id).catch(() => {});
+      return { ok: true, account: sanitizeAccount(account) };
+    }
+    if (remote.status === "wrong-password") {
+      return { ok: false, reason: "Incorrect password. Please try again." };
+    }
+    // "no-account" (pre-registry account) or registry unreachable:
+    // fall through to the device-local account below.
+  }
+
   const account = accounts[email];
   if (!account) {
     return {
@@ -208,6 +281,24 @@ export async function signIn(input: {
     return { ok: false, reason: "Incorrect password. Please try again." };
   }
   await AsyncStorage.setItem(SESSION_KEY, account.id).catch(() => {});
+  // Accounts born before the registry register themselves here, so
+  // their next reinstall is a plain log-in too.
+  if (isAccountSyncConfigured()) {
+    void (async () => {
+      const exists = await remoteAccountExists(email);
+      if (exists === false) {
+        const name =
+          [account.profile.firstName, account.profile.lastName]
+            .filter(Boolean)
+            .join(" ") || email.split("@")[0];
+        await registerRemoteAccount({
+          name,
+          email,
+          password: input.password,
+        });
+      }
+    })();
+  }
   return { ok: true, account: sanitizeAccount(account) };
 }
 
@@ -296,6 +387,11 @@ export async function changePassword(
     passwordHash: await hashPassword(newPassword, salt),
   };
   await saveAccount(next);
+  void changeRemotePassword({
+    email: account.email,
+    oldPassword,
+    newPassword,
+  });
   return { ok: true, account: next };
 }
 
@@ -323,16 +419,45 @@ export async function setPasswordForEmail(
     passwordHash: await hashPassword(newPassword, salt),
   };
   await writeAccounts(accounts);
+  // Keep the registry in step so the new password logs in anywhere.
+  void syncRemotePassword({ email: key, password: newPassword });
   return { ok: true };
 }
 
-/** Permanently deletes the current account and all its device data. */
-export async function deleteCurrentAccount(): Promise<void> {
+/** True when `password` matches the signed-in account's local copy. */
+export async function verifyCurrentPassword(
+  password: string
+): Promise<boolean> {
   const account = await getCurrentAccount();
-  if (account) {
-    const accounts = await readAccounts();
-    delete accounts[normalizeEmail(account.email)];
-    await writeAccounts(accounts);
+  if (!account) return false;
+  const attempt = await hashPassword(password, account.salt);
+  return attempt === account.passwordHash;
+}
+
+/**
+ * Permanently deletes the current account: the registry record goes
+ * too (freeing the email — coming back means signing up again), then
+ * all device data. Password is verified first so a borrowed phone
+ * can't nuke the account from the Settings screen.
+ */
+export async function deleteCurrentAccount(
+  password: string
+): Promise<{ ok: boolean; reason?: string }> {
+  const account = await getCurrentAccount();
+  if (!account) return { ok: false, reason: "You're not signed in." };
+  const attempt = await hashPassword(password, account.salt);
+  if (attempt !== account.passwordHash) {
+    return {
+      ok: false,
+      reason: "That password doesn't match — account not deleted.",
+    };
   }
+  await deleteRemoteAccount({ email: account.email, password }).catch(
+    () => false
+  );
+  const accounts = await readAccounts();
+  delete accounts[normalizeEmail(account.email)];
+  await writeAccounts(accounts);
   await AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
+  return { ok: true };
 }

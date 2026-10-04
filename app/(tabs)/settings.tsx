@@ -15,7 +15,7 @@ import { useTheme, type ThemePreference } from "../../components/ThemeProvider";
 import { MenuRow, ScreenHeader, SectionLabel } from "../../components/ui";
 import { NativeDropdown } from "../../components/NativeDropdown";
 import { useShop } from "../../store/shop";
-import { Radius, Spacing } from "../../constants/theme";
+import { Radius, Spacing, TabBarClearance } from "../../constants/theme";
 
 const STORE_LINKS =
   "Get the BeaTrackFam app — Loyalty Above All.\n" +
@@ -232,7 +232,7 @@ export default function SettingsHub() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  content: { padding: Spacing.md, paddingBottom: Spacing.xl },
+  content: { padding: Spacing.md, paddingBottom: TabBarClearance },
   dropdownCard: {
     borderRadius: Radius.lg,
     padding: Spacing.md,

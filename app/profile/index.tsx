@@ -95,7 +95,12 @@ export default function Profile() {
         text: "Log Out",
         onPress: async () => {
           await signOut();
-          router.replace("/(tabs)");
+          // Back to where he came from (Settings), not forward to Home.
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace("/(tabs)/settings");
+          }
         },
       },
     ]);

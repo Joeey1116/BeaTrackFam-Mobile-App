@@ -1,0 +1,6 @@
+## What's new in this version
+• Your account now follows you: sign up once, and you can log back in after deleting and reinstalling the app — no signing up all over again. (Deleting your account in Settings still removes everything, and frees your email like before.)
+• Creating an account now says "Account created" and takes you to Log In, and logging out brings you back to where you were.
+• The Appearance and option dropdowns now open full-width under the field, like on our site.
+• Settings and every tab scroll all the way to the bottom — nothing hides behind the tab bar anymore.
+Questions or concerns? Email us at contact@beatrackfam.info

@@ -96,3 +96,13 @@ export const Radius = {
   lg: 16,
   pill: 999,
 } as const;
+
+/**
+ * Bottom padding for tab screens' scroll content. The iOS 26 floating
+ * Liquid Glass tab bar (and Android's navigation bar in edge-to-edge)
+ * overlays the bottom of the screen, and the native bar's automatic
+ * inset doesn't reach screens whose ScrollView sits under a header —
+ * without this clearance the last rows (About, Delete Account) hide
+ * behind the bar. 128 ≈ capsule height + margins + breathing room.
+ */
+export const TabBarClearance = 128;

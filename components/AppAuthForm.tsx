@@ -1,10 +1,12 @@
 /**
  * BeaTrackFam app-account sign-in form (shared by login + signup).
  *
- * Email + password, stored as a salted hash ON THIS DEVICE ONLY
- * (lib/accounts.ts) — sign-in never touches Shopify, so it can't break
- * when Shopify's APIs hiccup. The UI says plainly that accounts live on
- * this device.
+ * Accounts are registered with the BeaTrackFam accounts worker, so a
+ * login survives deleting and reinstalling the app; the phone keeps a
+ * local copy for its session and offline fallback (lib/accounts.ts).
+ * After a successful sign-up the form shows an "Account created"
+ * prompt, signs the fresh session back out, and lands on Log In a
+ * couple of seconds later so the first log-in is a real one.
  */
 import React, { useState } from "react";
 import {
@@ -18,7 +20,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "./ThemeProvider";
 import { OutlineButton, PrimaryButton, ScreenHeader, TextField } from "./ui";
 import { useShop } from "../store/shop";
@@ -30,13 +32,15 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
   const { colors } = useTheme();
   const router = useRouter();
-  const { signIn, signUp, continueAsGuest } = useShop();
+  const params = useLocalSearchParams<{ email?: string }>();
+  const { signIn, signUp, signOut, continueAsGuest } = useShop();
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(params.email ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState(false);
 
   const isSignup = mode === "signup";
   const title = isSignup ? "Create Account" : "Log In";
@@ -65,7 +69,20 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
       const result = isSignup
         ? await signUp(name.trim(), email.trim(), password)
         : await signIn(email.trim(), password);
-      if (result.ok) {
+      if (result.ok && isSignup) {
+        // Account created: say so, sign the fresh session back out, and
+        // land on Log In a beat later so the first log-in is a real one.
+        const address = email.trim();
+        await signOut();
+        setBusy(false);
+        setCreated(true);
+        setTimeout(() => {
+          router.replace({
+            pathname: "/(onboarding)/login",
+            params: { email: address },
+          });
+        }, 2600);
+      } else if (result.ok) {
         router.replace("/(tabs)");
       } else {
         setError(result.reason);
@@ -97,8 +114,8 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
           {isSignup
             ? "Create your BeaTrackFam account to save addresses, track orders and check out faster."
             : "Log in to your BeaTrackFam account."}{" "}
-          Your account lives on this device — your password never leaves
-          your phone.
+          Your account is registered with BeaTrackFam, so you can log
+          back in on any phone — even after reinstalling the app.
         </Text>
 
         {isSignup && (
@@ -169,8 +186,23 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
           </View>
         )}
 
+        {created && (
+          <View
+            style={[styles.notice, { backgroundColor: colors.success + "1A" }]}
+          >
+            <Ionicons
+              name="checkmark-circle"
+              size={20}
+              color={colors.success}
+            />
+            <Text style={[styles.noticeText, { color: colors.text }]}>
+              Account created — welcome to the Fam. Taking you to log in…
+            </Text>
+          </View>
+        )}
+
         <View style={styles.ctaWrap}>
-          {busy ? (
+          {busy || created ? (
             <View style={[styles.busy, { backgroundColor: colors.button }]}>
               <ActivityIndicator color={colors.buttonText} />
             </View>
@@ -203,8 +235,8 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
         </View>
 
         <Text style={[styles.deviceNote, { color: colors.textDim }]}>
-          Accounts are stored on this device only — they don&apos;t follow
-          you to another phone.
+          Sign up once — your login works on any phone. Delete the app and
+          reinstall, and you can log right back in.
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>

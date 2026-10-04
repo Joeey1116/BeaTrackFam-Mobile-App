@@ -15,7 +15,7 @@ import { CartButton } from "../../components/CartButton";
 import { ProductImage } from "../../components/ProductImage";
 import { useShop } from "../../store/shop";
 import type { Product } from "../../data/mock";
-import { Radius, Spacing } from "../../constants/theme";
+import { Radius, Spacing, TabBarClearance } from "../../constants/theme";
 
 function WishlistRow({ product }: { product: Product }) {
   const { colors } = useTheme();
@@ -89,7 +89,7 @@ export default function Wishlist() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   count: { fontSize: 14, paddingHorizontal: Spacing.md, marginBottom: Spacing.sm },
-  list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xl, gap: Spacing.sm },
+  list: { paddingHorizontal: Spacing.md, paddingBottom: TabBarClearance, gap: Spacing.sm },
   row: {
     flexDirection: "row",
     alignItems: "center",

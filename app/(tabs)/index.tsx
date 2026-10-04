@@ -26,7 +26,7 @@ import { ProductImage } from "../../components/ProductImage";
 import { useShop } from "../../store/shop";
 import { fetchCollectionProducts } from "../../data/mock";
 import type { Collection, Product } from "../../data/mock";
-import { Radius, Spacing } from "../../constants/theme";
+import { Radius, Spacing, TabBarClearance } from "../../constants/theme";
 
 const BANNER_KEY = "beatrackfam-guest-banner-dismissed";
 
@@ -523,7 +523,7 @@ const styles = StyleSheet.create({
   },
   centerText: { fontSize: 14, textAlign: "center" },
   retryWrap: { marginTop: Spacing.sm, minWidth: 140 },
-  content: { padding: Spacing.md, paddingBottom: Spacing.xl },
+  content: { padding: Spacing.md, paddingBottom: TabBarClearance },
   slideshowWrap: { marginBottom: Spacing.md },
   slide: { borderRadius: Radius.lg },
   slideOverlay: {

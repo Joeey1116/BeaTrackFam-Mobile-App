@@ -8,6 +8,7 @@ import {
   OutlineButton,
   PrimaryButton,
   ScreenHeader,
+  TextField,
 } from "../../components/ui";
 import { useShop } from "../../store/shop";
 import { Radius, Spacing } from "../../constants/theme";
@@ -18,6 +19,7 @@ export default function DeleteAccount() {
   const { account, deleteAccount, eraseLocalData } = useShop();
   const [deleting, setDeleting] = useState(false);
   const [erasing, setErasing] = useState(false);
+  const [password, setPassword] = useState("");
 
   const onRequestShopifyDelete = () => {
     const email = account?.email ?? "";
@@ -33,9 +35,16 @@ export default function DeleteAccount() {
   };
 
   const onDeleteAccount = () => {
+    if (!password) {
+      Alert.alert(
+        "Password needed",
+        "Enter your password to confirm it's you — then your account is gone for good."
+      );
+      return;
+    }
     Alert.alert(
       "Delete your account?",
-      "This permanently removes your BeaTrackFam app account from this device — your profile, saved addresses and order history in the app. Orders already placed stay in Shopify's records (email us below if you want those removed too).",
+      "This permanently removes your BeaTrackFam account — your registration, profile, saved addresses and order history in the app. Your email is freed up, so coming back means signing up again. Orders already placed stay in Shopify's records (email us below if you want those removed too).",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -43,8 +52,12 @@ export default function DeleteAccount() {
           style: "destructive",
           onPress: async () => {
             setDeleting(true);
-            await deleteAccount();
+            const result = await deleteAccount(password);
             setDeleting(false);
+            if (!result.ok) {
+              Alert.alert("Account not deleted", result.reason ?? "");
+              return;
+            }
             router.replace("/(tabs)");
           },
         },
@@ -86,17 +99,30 @@ export default function DeleteAccount() {
             How account deletion works
           </Text>
           <Text style={[styles.cardBody, { color: colors.textMuted }]}>
-            Your BeaTrackFam account lives on this device, so you can delete
-            it yourself — no waiting. This removes your profile, saved
-            addresses and in-app order history from this phone.
+            Your BeaTrackFam account is registered with us (that&apos;s how
+            logging back in works after a reinstall) — deleting removes
+            that registration and everything on this phone with it. Enter
+            your password below so a borrowed phone can&apos;t do this to
+            you.
           </Text>
         </View>
 
         {account && (
-          <PrimaryButton
-            label={deleting ? "Deleting…" : "Delete My Account"}
-            onPress={onDeleteAccount}
-          />
+          <>
+            <TextField
+              label="Your password"
+              placeholder="Enter your password to confirm"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+            <View style={styles.gap} />
+            <PrimaryButton
+              label={deleting ? "Deleting…" : "Delete My Account"}
+              onPress={onDeleteAccount}
+            />
+          </>
         )}
 
         <View style={styles.divider} />

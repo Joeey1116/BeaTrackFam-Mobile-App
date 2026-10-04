@@ -100,7 +100,9 @@ interface ShopContextValue {
     oldPassword: string,
     newPassword: string
   ) => Promise<AccountResult>;
-  deleteAccount: () => Promise<void>;
+  deleteAccount: (
+    password: string
+  ) => Promise<{ ok: boolean; reason?: string }>;
   addOrderReceipt: (
     receipt: Omit<OrderReceipt, "placedAt">
   ) => Promise<void>;
@@ -234,10 +236,14 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const deleteAccount = useCallback(async () => {
-    await deleteCurrentAccount();
-    setAccount(null);
-  }, []);
+  const deleteAccount = useCallback(
+    async (password: string) => {
+      const result = await deleteCurrentAccount(password);
+      if (result.ok) setAccount(null);
+      return result;
+    },
+    []
+  );
 
   const addOrderReceipt = useCallback(
     async (receipt: Omit<OrderReceipt, "placedAt">) => {
