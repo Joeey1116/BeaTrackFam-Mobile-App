@@ -1,5 +1,5 @@
 /** Settings tab — profile card + menu hub with separate screens. */
-import React from "react";
+import React, { useState } from "react";
 import {
   Image,
   Pressable,
@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useTheme, type ThemePreference } from "../../components/ThemeProvider";
 import { MenuRow, ScreenHeader, SectionLabel } from "../../components/ui";
+import { SelectSheet } from "../../components/SelectDropdown";
 import { useShop } from "../../store/shop";
 import { Radius, Spacing } from "../../constants/theme";
 
@@ -26,7 +27,11 @@ const THEME_LABELS: Record<ThemePreference, string> = {
   dark: "Dark",
   system: "System",
 };
-const THEME_ORDER: ThemePreference[] = ["light", "dark", "system"];
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: "light", label: THEME_LABELS.light },
+  { value: "dark", label: THEME_LABELS.dark },
+  { value: "system", label: THEME_LABELS.system },
+];
 
 function ProfileCard() {
   const { colors } = useTheme();
@@ -104,6 +109,7 @@ export default function SettingsHub() {
   const { colors, theme, setTheme } = useTheme();
   const router = useRouter();
   const { account } = useShop();
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
 
   const icon = (name: React.ComponentProps<typeof Ionicons>["name"]) => (
     <Ionicons name={name} size={20} color={colors.text} />
@@ -115,10 +121,6 @@ export default function SettingsHub() {
     } catch {
       // user dismissed — nothing to do
     }
-  };
-
-  const cycleTheme = () => {
-    setTheme(THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length]);
   };
 
   return (
@@ -164,7 +166,7 @@ export default function SettingsHub() {
           )}
           title="Appearance"
           subtitle={THEME_LABELS[theme]}
-          onPress={cycleTheme}
+          onPress={() => setAppearanceOpen(true)}
         />
         <MenuRow
           icon={icon("information-circle-outline")}
@@ -200,6 +202,15 @@ export default function SettingsHub() {
           </>
         )}
       </ScrollView>
+
+      <SelectSheet
+        visible={appearanceOpen}
+        title="Appearance"
+        options={THEME_OPTIONS}
+        selectedValue={theme}
+        onSelect={(v) => setTheme(v as ThemePreference)}
+        onClose={() => setAppearanceOpen(false)}
+      />
     </View>
   );
 }

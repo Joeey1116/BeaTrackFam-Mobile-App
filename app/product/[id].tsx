@@ -12,6 +12,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "../../components/ThemeProvider";
 import { PrimaryButton, ScreenHeader } from "../../components/ui";
 import { CartButton } from "../../components/CartButton";
+import { SelectDropdown } from "../../components/SelectDropdown";
 import { ProductGallery } from "../../components/ProductGallery";
 import { Reviews } from "../../components/Reviews";
 import { useShop } from "../../store/shop";
@@ -166,51 +167,71 @@ export default function ProductDetails() {
           </Text>
         )}
 
-        {product.options.map((opt) => (
-          <View key={opt.name}>
-            <Text style={[styles.optionLabel, { color: colors.text }]}>
-              {opt.name}:{" "}
-              <Text style={styles.optionValue}>
-                {effectiveSelected[opt.name] ?? ""}
+        {product.options.map((opt) => {
+          // Long option lists (e.g. 8 sizes) would force a sideways
+          // swipe through chips — those become a dropdown instead.
+          const useDropdown = opt.values.length > 5;
+          return (
+            <View key={opt.name}>
+              <Text style={[styles.optionLabel, { color: colors.text }]}>
+                {opt.name}:{" "}
+                <Text style={styles.optionValue}>
+                  {effectiveSelected[opt.name] ?? ""}
+                </Text>
               </Text>
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chipRow}
-            >
-              {opt.values.map((val) => {
-                const isSelected = effectiveSelected[opt.name] === val;
-                return (
-                  <Pressable
-                    key={val}
-                    onPress={() =>
-                      setSelected((s) => ({ ...(s ?? effectiveSelected), [opt.name]: val }))
-                    }
-                    style={[
-                      styles.chip,
-                      {
-                        borderColor: isSelected ? colors.text : colors.border,
-                        backgroundColor: isSelected
-                          ? colors.surface
-                          : "transparent",
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        { color: colors.text, fontWeight: isSelected ? "800" : "600" },
-                      ]}
-                    >
-                      {val}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        ))}
+              {useDropdown ? (
+                <SelectDropdown
+                  value={effectiveSelected[opt.name] ?? ""}
+                  options={opt.values.map((v) => ({ value: v, label: v }))}
+                  onSelect={(val) =>
+                    setSelected((s) => ({
+                      ...(s ?? effectiveSelected),
+                      [opt.name]: val,
+                    }))
+                  }
+                  sheetTitle={opt.name}
+                  accessibilityLabel={`Choose ${opt.name}`}
+                />
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chipRow}
+                >
+                  {opt.values.map((val) => {
+                    const isSelected = effectiveSelected[opt.name] === val;
+                    return (
+                      <Pressable
+                        key={val}
+                        onPress={() =>
+                          setSelected((s) => ({ ...(s ?? effectiveSelected), [opt.name]: val }))
+                        }
+                        style={[
+                          styles.chip,
+                          {
+                            borderColor: isSelected ? colors.text : colors.border,
+                            backgroundColor: isSelected
+                              ? colors.surface
+                              : "transparent",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.chipText,
+                            { color: colors.text, fontWeight: isSelected ? "800" : "600" },
+                          ]}
+                        >
+                          {val}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
+          );
+        })}
 
         {product.description.length > 0 && (
           <Text style={[styles.description, { color: colors.textMuted }]}>

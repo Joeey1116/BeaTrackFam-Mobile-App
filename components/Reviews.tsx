@@ -15,7 +15,9 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useTheme } from "./ThemeProvider";
+import { useShop } from "../store/shop";
 import { EmptyState, PrimaryButton, SectionLabel, TextField } from "./ui";
 import { Radius, Spacing } from "../constants/theme";
 import {
@@ -156,14 +158,21 @@ export function Reviews({
   productTitle: string;
 }) {
   const { colors } = useTheme();
+  const router = useRouter();
+  // Writing a review requires an account (Joey, Oct 4 2026): guests can
+  // read reviews, but the write form only opens when logged in, and it
+  // posts under the account's own name + email.
+  const { account, profile } = useShop();
+  const loggedIn = account !== null;
+  const reviewerName =
+    [profile.firstName, profile.lastName].filter(Boolean).join(" ") ||
+    (account ? account.email.split("@")[0] : "");
   const [data, setData] = useState<ReviewsPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [formOpen, setFormOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [rating, setRating] = useState(5);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -227,12 +236,8 @@ export function Reviews({
 
   const onSubmit = async () => {
     setFormError(null);
-    if (name.trim().length === 0) {
-      setFormError("Enter your name.");
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setFormError("Enter a valid email address.");
+    if (!account) {
+      setFormError("Log in to write a review.");
       return;
     }
     if (body.trim().length === 0) {
@@ -243,16 +248,14 @@ export function Reviews({
     try {
       await submitReview({
         productId: productNumericId,
-        name: name.trim(),
-        email: email.trim(),
+        name: reviewerName,
+        email: account.email,
         rating,
         title: title.trim(),
         body: body.trim(),
       });
       setSubmitted(true);
       setFormOpen(false);
-      setName("");
-      setEmail("");
       setRating(5);
       setTitle("");
       setBody("");
@@ -321,7 +324,17 @@ export function Reviews({
         </View>
       )}
 
-      {!formOpen ? (
+      {!loggedIn ? (
+        <Pressable
+          onPress={() => router.push("/(onboarding)/login")}
+          style={[styles.writeButton, { borderColor: colors.border }]}
+        >
+          <Ionicons name="lock-closed-outline" size={18} color={colors.text} />
+          <Text style={[styles.writeButtonText, { color: colors.text }]}>
+            Log in to write a review
+          </Text>
+        </Pressable>
+      ) : !formOpen ? (
         <Pressable
           onPress={() => {
             setFormOpen(true);
@@ -343,22 +356,11 @@ export function Reviews({
             Rating
           </Text>
           <StarRow value={rating} size={32} onRate={setRating} />
+          <Text style={[styles.postingAs, { color: colors.textMuted }]}>
+            Posting as {reviewerName}
+            {account ? ` · ${account.email}` : ""}
+          </Text>
           <View style={styles.fieldGap} />
-          <TextField
-            label="Name"
-            placeholder="Your name"
-            value={name}
-            onChangeText={setName}
-            autoCapitalize="words"
-          />
-          <TextField
-            label="Email"
-            placeholder="you@example.com"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
           <TextField
             label="Headline (optional)"
             placeholder="Sum it up in a few words"
@@ -495,6 +497,7 @@ const styles = StyleSheet.create({
   form: { borderRadius: Radius.lg, padding: Spacing.md, marginTop: Spacing.md },
   formTitle: { fontSize: 17, fontWeight: "800", marginBottom: Spacing.sm },
   formLabel: { fontSize: 14, fontWeight: "700", marginBottom: Spacing.xs },
+  postingAs: { fontSize: 13, marginTop: Spacing.sm },
   fieldGap: { height: Spacing.sm },
   bodyInput: {
     borderRadius: Radius.md,
