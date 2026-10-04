@@ -1,0 +1,2 @@
+Android maintenance update: corrected store declarations to match the app exactly (advertising ID + foreground service permissions). Smaller, faster Android builds with better crash reporting under the hood, plus general stability improvements.
+Questions or concerns? Email us at contact@beatrackfam.info
