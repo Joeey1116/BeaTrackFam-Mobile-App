@@ -21,7 +21,9 @@
       "googleServicesFile": "./google-services.json",
       "blockedPermissions": [
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_LOCATION"
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
       ]
     },
     "icon": "./assets/icon.png",
