@@ -1,0 +1,8 @@
+A whole new BeaTrackFam app, rebuilt from the ground up — faster, smoother, fully native.
+• Shop the full catalog and check out in the app
+• Accounts that follow you: sign up once, log back in after reinstalling
+• Profiles, saved addresses & order history
+• Password reset by emailed code
+• Product reviews — read & write (logged in)
+• Light, Dark & System themes
+Questions or concerns? Email us at contact@beatrackfam.info
