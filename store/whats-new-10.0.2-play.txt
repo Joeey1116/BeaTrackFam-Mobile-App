@@ -1,0 +1,2 @@
+Performance & memory update: images now load right-sized for your screen (less memory, faster scrolling) and the app binary is fully optimized. Store declarations corrected to match the app exactly, full tablet/foldable rotation and resizing, and modern edge-to-edge display.
+Questions or concerns? Email us at contact@beatrackfam.info

@@ -1,0 +1,8 @@
+## What's new in this version
+- Performance & memory update: images now load right-sized for your screen (much less memory, faster scrolling), and the app binary is fully optimized with R8
+- Corrected store declarations to match the app exactly (advertising ID + foreground service permissions)
+- Full large-screen support: the app now rotates and resizes freely on tablets and foldables (no orientation locks)
+- Modern edge-to-edge display using current Android APIs (no deprecated parameters)
+- General stability improvements
+
+Questions or concerns? Email us at contact@beatrackfam.info

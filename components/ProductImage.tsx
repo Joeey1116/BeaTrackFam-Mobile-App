@@ -20,6 +20,18 @@ interface ProductImageProps {
   aspectRatio?: number;
 }
 
+/**
+ * Downsample Shopify CDN images at the source: asking the CDN for a
+ * width close to what the tile actually displays keeps decoded bitmaps
+ * small (Google Play flags full-size bitmap decoding as a memory issue).
+ * Non-Shopify URLs pass through untouched.
+ */
+function sizedShopifyUrl(url: string, displayWidth?: number): string {
+  if (!url.includes("cdn.shopify.com") || /[?&]width=/.test(url)) return url;
+  const target = Math.min(Math.max(Math.round(displayWidth ?? 720), 100), 1600);
+  return `${url}${url.includes("?") ? "&" : "?"}width=${target}`;
+}
+
 export function ProductImage({
   image,
   tint,
@@ -35,6 +47,10 @@ export function ProductImage({
 
   const showImage = !!image?.url && !failed;
   const tileColor = tint ?? colors.surfaceRaised;
+  // 2x the tile's display width for retina sharpness, capped by the helper.
+  const imageUrl = image?.url
+    ? sizedShopifyUrl(image.url, fullWidth ? 1080 : size ? size * 2 : 720)
+    : undefined;
 
   return (
     <View
@@ -58,7 +74,7 @@ export function ProductImage({
       ) : null}
       {showImage ? (
         <Image
-          source={{ uri: image!.url }}
+          source={{ uri: imageUrl }}
           accessibilityLabel={image!.altText ?? undefined}
           onLoad={() => setLoaded(true)}
           onError={() => setFailed(true)}
