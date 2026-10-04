@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Platform, StyleSheet, View, type ColorValue } from "react-native";
+import { Platform, StyleSheet, Text, View, type ColorValue } from "react-native";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,20 +15,22 @@ type BlurViewType = typeof import("expo-blur")["BlurView"];
  * no TurboModuleRegistry name probe gating the lazy import.)
  */
 
-const PILL_RADIUS = 30;
-const PILL_HEIGHT = 60;
+const PILL_RADIUS = 35;
+const PILL_HEIGHT = 70;
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 function TabIcon({
   name,
   outlineName,
+  label,
   color,
   focused,
   isDark,
 }: {
   name: IconName;
   outlineName: IconName;
+  label: string;
   color: ColorValue;
   focused: boolean;
   isDark: boolean;
@@ -44,7 +46,8 @@ function TabIcon({
         },
       ]}
     >
-      <Ionicons name={focused ? name : outlineName} size={24} color={color} />
+      <Ionicons name={focused ? name : outlineName} size={22} color={color} />
+      <Text style={[styles.tabLabel, { color }]}>{label}</Text>
     </View>
   );
 }
@@ -157,6 +160,7 @@ export default function TabsLayout() {
             <TabIcon
               name="home"
               outlineName="home-outline"
+              label="Home"
               color={color}
               focused={focused}
               isDark={isDark}
@@ -172,6 +176,7 @@ export default function TabsLayout() {
             <TabIcon
               name="grid"
               outlineName="grid-outline"
+              label="Collections"
               color={color}
               focused={focused}
               isDark={isDark}
@@ -187,6 +192,7 @@ export default function TabsLayout() {
             <TabIcon
               name="heart"
               outlineName="heart-outline"
+              label="Wishlist"
               color={color}
               focused={focused}
               isDark={isDark}
@@ -202,6 +208,7 @@ export default function TabsLayout() {
             <TabIcon
               name="settings"
               outlineName="settings-outline"
+              label="Settings"
               color={color}
               focused={focused}
               isDark={isDark}
@@ -231,8 +238,14 @@ const styles = StyleSheet.create({
     borderRadius: PILL_RADIUS,
   },
   iconPill: {
-    paddingHorizontal: 17,
-    paddingVertical: 6,
+    alignItems: "center",
+    paddingHorizontal: 13,
+    paddingVertical: 5,
     borderRadius: 999,
+  },
+  tabLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    marginTop: 1,
   },
 });
