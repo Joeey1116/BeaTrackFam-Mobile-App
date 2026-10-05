@@ -1,3 +1,9 @@
+# EAS Build archive rules (EAS uses this file instead of .gitignore).
+# Keep in sync with .gitignore. The ios/ skeleton + ci_scripts are tracked
+# for Xcode Cloud, but EAS must never see them: a committed ios/ folder
+# would flip EAS into bare-workflow mode and skip its prebuild. With /ios
+# excluded here, EAS keeps generating the native project itself (CNG),
+# exactly as before.
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
 # dependencies
@@ -37,17 +43,10 @@ yarn-error.*
 *.tsbuildinfo
 
 # generated native folders
-# Xcode Cloud: only the project skeleton (project + shared scheme) and
-# ci_scripts are tracked. The rest of ios/ is regenerated fresh from
-# app.json by `expo prebuild` (locally and in ci_post_clone.sh).
-/ios/*
-!/ios/BeaTrackFam.xcodeproj/
-!/ios/ci_scripts/
 /ios/BeaTrackFam.xcodeproj/*
-!/ios/BeaTrackFam.xcodeproj/project.pbxproj
-!/ios/BeaTrackFam.xcodeproj/xcshareddata/
 /ios/BeaTrackFam.xcodeproj/xcshareddata/*
-!/ios/BeaTrackFam.xcodeproj/xcshareddata/xcschemes/
 /ios/BeaTrackFam.xcodeproj/xcshareddata/xcschemes/*
-!/ios/BeaTrackFam.xcodeproj/xcshareddata/xcschemes/BeaTrackFam.xcscheme
 /android
+
+# native folders: fully excluded from the EAS archive (see header)
+/ios
