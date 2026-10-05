@@ -23,9 +23,15 @@ jobs:
           echo "APP_VERSION=$(jq -r '.expo.version' app.json)" >> "$GITHUB_ENV"
           echo "APP_BUILD=$(jq -r '.expo.ios.buildNumber' app.json)" >> "$GITHUB_ENV"
 
-      - name: Select the newest Xcode on the runner
+      - name: Select Xcode 16.4
+        # Pinned on purpose: this Expo SDK's native code (expo-modules-jsi)
+        # does not compile under Xcode 26's stricter clang checks
+        # (SWIFT_RETURNS_RETAINED annotation errors, seen on run #2).
+        # Xcode 16.4 still satisfies the App Store's Xcode 16 / iOS 18 SDK
+        # upload minimum, so pin it instead of taking the newest.
         run: |
-          XC="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)"
+          XC="/Applications/Xcode_16.4.app"
+          if [ ! -d "$XC" ]; then XC="$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)"; fi
           if [ -z "$XC" ]; then XC="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"; fi
           echo "Using $XC"
           sudo xcode-select -s "$XC/Contents/Developer"
