@@ -40,7 +40,7 @@ jobs:
           xcodebuild -version
 
       - name: Set up Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: npm
@@ -148,7 +148,7 @@ jobs:
             -authenticationKeyIssuerID "$ASC_API_ISSUER_ID"
 
       - name: Upload the IPA as a run artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: BeaTrackFam-${{ env.APP_VERSION }}-${{ env.APP_BUILD }}-ipa
           path: build/ipa/*.ipa

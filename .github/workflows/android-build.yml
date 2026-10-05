@@ -1,0 +1,127 @@
+name: Build Android AAB
+
+# MANUAL TRIGGER ONLY, same as the iOS build: this never runs on its own,
+# so it can't burn Actions minutes by accident. Run it from the Actions
+# tab; it produces the Play Store .aab as a downloadable artifact.
+# Nothing is uploaded to Google Play automatically.
+#
+# Signing: the Play upload keystore lives in the ANDROID_KEYSTORE_BASE64
+# secret (EAS generated that key on 2026-10-01; see the repo docs). Each
+# run decodes it next to the generated project, points the release build
+# at it via .github/scripts/android-signing.py, and deletes it after.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android AAB (Release)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Check the signing secrets are set
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$KS_B64" ] && missing="$missing ANDROID_KEYSTORE_BASE64"
+          [ -z "$KS_PW" ] && missing="$missing ANDROID_KEYSTORE_PASSWORD"
+          [ -z "$KEY_ALIAS" ] && missing="$missing ANDROID_KEY_ALIAS"
+          [ -z "$KEY_PW" ] && missing="$missing ANDROID_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing GitHub secrets:$missing — add them under Settings, Secrets and variables, Actions, then run this again."
+            exit 1
+          fi
+          echo "All four Android signing secrets are present."
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Generate the native Android project (expo prebuild)
+        env:
+          CI: 'true'
+          EXPO_NO_TELEMETRY: '1'
+        run: npx expo prebuild -p android --no-install
+
+      - name: Write the upload keystore
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          CLEAN="$(printf '%s' "$KS_B64" | tr -d '"[:space:]')"
+          if ! printf '%s' "$CLEAN" | base64 -d > android/app/upload-keystore.jks 2>/dev/null; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 could not be decoded. Re-copy the full base64 text of the .jks file and paste the secret again."
+            exit 1
+          fi
+          if [ ! -s android/app/upload-keystore.jks ]; then
+            echo "::error::The decoded keystore file is empty. Re-copy ANDROID_KEYSTORE_BASE64."
+            exit 1
+          fi
+          if ! keytool -list -keystore android/app/upload-keystore.jks -storepass "$KS_PW" -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::The keystore could not be opened with ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS. Check those two secrets match the keystore EAS generated."
+            exit 1
+          fi
+          echo "Keystore decoded and opened OK."
+
+      - name: Point the release build at the keystore
+        run: python3 .github/scripts/android-signing.py android/app/build.gradle
+
+      - name: Build the release bundle (AAB)
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew bundleRelease --no-daemon
+
+      - name: Show which key signed the bundle
+        run: |
+          AAB="android/app/build/outputs/bundle/release/app-release.aab"
+          ls -lh "$AAB"
+          echo "Signer certificate (compare the SHA-256 line with Play Console, App integrity):"
+          keytool -printcert -jarfile "$AAB" 2>/dev/null | grep -E "Owner:|SHA256:" || true
+
+      - name: Name the AAB from app.json
+        id: ver
+        run: |
+          VERSION="$(jq -r '.expo.version' app.json)"
+          CODE="$(jq -r '.expo.android.versionCode' app.json)"
+          cp android/app/build/outputs/bundle/release/app-release.aab "BeaTrackFam-${VERSION}-${CODE}.aab"
+          echo "artifact_name=BeaTrackFam-${VERSION}-${CODE}-aab" >> "$GITHUB_OUTPUT"
+          echo "aab_file=BeaTrackFam-${VERSION}-${CODE}.aab" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the AAB as a run artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.ver.outputs.artifact_name }}
+          path: ${{ steps.ver.outputs.aab_file }}
+          retention-days: 30
+
+      - name: Remove the keystore
+        if: always()
+        run: rm -f android/app/upload-keystore.jks
