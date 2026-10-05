@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Read app version from app.json
         run: |
@@ -40,9 +40,9 @@ jobs:
           xcodebuild -version
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
 
       - name: Install JS dependencies
@@ -148,7 +148,7 @@ jobs:
             -authenticationKeyIssuerID "$ASC_API_ISSUER_ID"
 
       - name: Upload the IPA as a run artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: BeaTrackFam-${{ env.APP_VERSION }}-${{ env.APP_BUILD }}-ipa
           path: build/ipa/*.ipa
