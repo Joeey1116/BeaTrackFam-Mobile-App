@@ -59,8 +59,27 @@ jobs:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
         run: |
+          KEY_FILE="$HOME/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
           mkdir -p "$HOME/private_keys"
-          printf '%s\n' "$ASC_API_KEY_P8" > "$HOME/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+          raw="$ASC_API_KEY_P8"
+          # Undo common paste accidents: surrounding quotes, CR characters,
+          # and literal \n sequences instead of real line breaks.
+          raw="${raw#\"}"; raw="${raw%\"}"
+          raw="${raw#\'}"; raw="${raw%\'}"
+          raw="$(printf '%s' "$raw" | tr -d '\r')"
+          if [[ "$raw" != *$'\n'* ]]; then
+            raw="$(printf '%s' "$raw" | sed 's/\\n/\n/g')"
+          fi
+          # If the BEGIN/END lines were lost, wrap the base64 body again.
+          if [[ "$raw" != *"BEGIN PRIVATE KEY"* ]]; then
+            body="$(printf '%s' "$raw" | tr -d '[:space:]')"
+            raw="$(printf -- '-----BEGIN PRIVATE KEY-----\n%s\n-----END PRIVATE KEY-----\n' "$(printf '%s' "$body" | fold -w 64)")"
+          fi
+          printf '%s\n' "$raw" > "$KEY_FILE"
+          if ! openssl pkey -in "$KEY_FILE" -noout 2>/dev/null; then
+            echo "::error::The ASC_API_KEY_P8 secret is not a valid .p8 key. Re-paste the full contents of the .p8 file from App Store Connect, including the BEGIN/END lines."
+            exit 1
+          fi
 
       - name: Archive the app (automatic signing via API key)
         env:
