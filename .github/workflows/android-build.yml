@@ -49,13 +49,6 @@ jobs:
           node-version: '24'
           cache: npm
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: gradle
-
       - name: Install JS dependencies
         run: npm ci
 
@@ -64,6 +57,17 @@ jobs:
           CI: 'true'
           EXPO_NO_TELEMETRY: '1'
         run: npx expo prebuild -p android --no-install
+
+      # Java setup must come AFTER prebuild: with cache: gradle it hashes
+      # the Gradle files for its cache key, and those files only exist
+      # once prebuild has generated the android/ folder. (Run #1 failed
+      # here in 17s because at checkout time there are no Gradle files.)
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
 
       - name: Write the upload keystore
         env:
