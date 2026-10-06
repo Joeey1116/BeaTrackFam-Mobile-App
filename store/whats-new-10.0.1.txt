@@ -1,8 +1,5 @@
 ## What's new in this version
-- Android maintenance update: corrected store declarations to match the app exactly (advertising ID + foreground service permissions)
-- Smaller, faster Android builds with improved crash reporting under the hood
-- Full large-screen support: the app now rotates and resizes freely on tablets and foldables (no orientation locks)
-- Modern edge-to-edge display using current Android APIs (no deprecated parameters)
-- General stability improvements
+- Performance improvements and stability fixes under the hood
+- General polish to keep shopping quick and easy
 
 Questions or concerns? Email us at contact@beatrackfam.info
