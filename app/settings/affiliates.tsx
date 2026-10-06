@@ -21,10 +21,10 @@ import { Radius, Spacing } from "../../constants/theme";
 
 // "Pro Affiliates" (by Anuj Tenani) is GoAffPro's affiliate-side app — it is
 // NOT our app. Affiliates use it to see their link, sales and earnings.
-// PLACEHOLDER: these are store search URLs. Paste the exact listing URLs
-// here before release.
+// App Store listing URL confirmed by Joey (Oct 6, 2026). The Play URL is
+// still a store search URL — paste the exact listing URL here before release.
 const AFFILIATE_APP_STORE_URL =
-  "https://apps.apple.com/us/search?term=Pro%20Affiliates";
+  "https://apps.apple.com/us/app/pro-affiliates/id1489316147";
 const AFFILIATE_APP_PLAY_URL =
   "https://play.google.com/store/search?q=Pro%20Affiliates&c=apps";
 
