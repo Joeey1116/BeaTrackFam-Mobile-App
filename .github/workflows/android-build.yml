@@ -138,7 +138,7 @@ jobs:
       # key, stored as a GitHub secret — never in the repo).
       - name: Upload the AAB to Google Play (internal, draft)
         if: ${{ inputs.upload_to_play }}
-        uses: r0adkll/upload-google-play@v1.2.3
+        uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.beatrackfaminc
