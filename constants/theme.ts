@@ -94,8 +94,38 @@ export const Radius = {
   sm: 8,
   md: 12,
   lg: 16,
+  xl: 24,
   pill: 999,
 } as const;
+
+/**
+ * Type scale for the 12.0.0 redesign — Klarna-grade hierarchy:
+ * heavy (800) headlines, generous sizes, tight tracking on the big
+ * display lines. Spread into Text styles: {...Type.headline}.
+ */
+export const Type: Record<string, import("react-native").TextStyle> = {
+  /** Hero greetings / auth titles. */
+  display: { fontSize: 30, fontWeight: "800", lineHeight: 36, letterSpacing: -0.4 },
+  /** Screen-level headlines (profile name, rail titles sit one step down). */
+  headline: { fontSize: 24, fontWeight: "800", lineHeight: 30, letterSpacing: -0.3 },
+  /** Section headers ("Newest drops", "There's more"). */
+  section: { fontSize: 19, fontWeight: "800", lineHeight: 24 },
+  /** Card + row titles. */
+  title: { fontSize: 15, fontWeight: "700", lineHeight: 20 },
+  /** Default body copy. */
+  body: { fontSize: 14, fontWeight: "400", lineHeight: 20 },
+  /** Small print under titles. */
+  caption: { fontSize: 13, fontWeight: "400", lineHeight: 18 },
+  /** "See all" / inline links. */
+  link: { fontSize: 13, fontWeight: "700" },
+  /** Uppercase kickers above sections. */
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+  },
+};
 
 /**
  * Bottom padding for tab screens' scroll content. The iOS 26 floating

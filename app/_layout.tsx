@@ -33,6 +33,8 @@ export default function RootLayout() {
           <Stack.Screen name="thank-you" />
           <Stack.Screen name="forgot-password" />
           <Stack.Screen name="cart" />
+          <Stack.Screen name="inbox" />
+          <Stack.Screen name="ask-bea" />
           <Stack.Screen name="profile" />
           <Stack.Screen name="profile/edit" />
           <Stack.Screen name="profile/addresses" />

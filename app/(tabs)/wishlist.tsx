@@ -10,8 +10,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useTheme } from "../../components/ThemeProvider";
-import { EmptyState, ScreenHeader } from "../../components/ui";
-import { CartButton } from "../../components/CartButton";
+import { EmptyState } from "../../components/ui";
+import { TopBar } from "../../components/TopBar";
 import { ProductImage } from "../../components/ProductImage";
 import { useShop } from "../../store/shop";
 import type { Product } from "../../data/mock";
@@ -63,7 +63,7 @@ export default function Wishlist() {
 
   return (
     <View style={[styles.safe, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Wishlist" right={<CartButton />} />
+      <TopBar />
       <Text style={[styles.count, { color: colors.textMuted }]}>
         {items.length} item{items.length === 1 ? "" : "s"} saved
       </Text>

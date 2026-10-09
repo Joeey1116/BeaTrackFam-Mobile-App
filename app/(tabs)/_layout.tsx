@@ -67,10 +67,13 @@ export default function TabsLayout() {
         contentStyle={{ backgroundColor: colors.background }}
         disableTransparentOnScrollEdge
       >
-        <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          sf={{ default: "gearshape", selected: "gearshape.fill" }}
-          md="settings"
+          sf={{
+            default: "person.crop.circle",
+            selected: "person.crop.circle.fill",
+          }}
+          md="person"
         />
       </NativeTabs.Trigger>
     </NativeTabs>

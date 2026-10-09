@@ -9,24 +9,20 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useTheme } from "../../components/ThemeProvider";
-import {
-  OutlineButton,
-  PrimaryButton,
-  ScreenHeader,
-} from "../../components/ui";
-import { CartButton } from "../../components/CartButton";
+import { OutlineButton, PrimaryButton } from "../../components/ui";
+import { TopBar } from "../../components/TopBar";
+import { LogoEye } from "../../components/LogoEye";
 import { ProductImage } from "../../components/ProductImage";
 import { useShop } from "../../store/shop";
 import { fetchCollectionProducts } from "../../data/mock";
 import type { Collection, Product } from "../../data/mock";
-import { Radius, Spacing, TabBarClearance } from "../../constants/theme";
+import { Radius, Spacing, TabBarClearance, Type } from "../../constants/theme";
 
 const BANNER_KEY = "beatrackfam-guest-banner-dismissed";
 
@@ -156,40 +152,6 @@ function BannerSlideshow() {
   );
 }
 
-function HomeSearchBar() {
-  const { colors } = useTheme();
-  const router = useRouter();
-  const [value, setValue] = useState("");
-
-  const submit = () => {
-    const q = value.trim();
-    if (!q) return;
-    setValue("");
-    router.push({ pathname: "/(tabs)/collections", params: { q } });
-  };
-
-  return (
-    <View style={[styles.searchRow, { backgroundColor: colors.input }]}>
-      <Ionicons name="search-outline" size={20} color={colors.textDim} />
-      <TextInput
-        style={[styles.searchInput, { color: colors.text }]}
-        placeholder="Search the shop..."
-        placeholderTextColor={colors.textDim}
-        value={value}
-        onChangeText={setValue}
-        onSubmitEditing={submit}
-        returnKeyType="search"
-        autoCapitalize="none"
-      />
-      {value.length > 0 && (
-        <Pressable onPress={() => setValue("")} hitSlop={8}>
-          <Ionicons name="close-circle" size={18} color={colors.textDim} />
-        </Pressable>
-      )}
-    </View>
-  );
-}
-
 function GuestBanner({ onDismiss }: { onDismiss: () => void }) {
   const { colors } = useTheme();
   const router = useRouter();
@@ -230,7 +192,7 @@ function GuestBanner({ onDismiss }: { onDismiss: () => void }) {
   );
 }
 
-function CollectionCard({ collection }: { collection: Collection }) {
+function CollectionCircle({ collection }: { collection: Collection }) {
   const { colors } = useTheme();
   const router = useRouter();
   return (
@@ -242,27 +204,117 @@ function CollectionCard({ collection }: { collection: Collection }) {
         })
       }
       style={({ pressed }) => [
-        styles.collectionCard,
-        { opacity: pressed ? 0.85 : 1 },
+        styles.collectionCircle,
+        { opacity: pressed ? 0.75 : 1 },
       ]}
     >
       <ProductImage
         image={collection.image}
-        size={140}
-        rounded={Radius.lg}
-        iconSize={40}
+        size={76}
+        rounded={Radius.pill}
+        iconSize={28}
       />
-      <View
-        style={[styles.collectionLabel, { backgroundColor: colors.button }]}
+      <Text
+        style={[styles.collectionCircleLabel, { color: colors.text }]}
+        numberOfLines={2}
       >
-        <Text
-          style={[styles.collectionLabelText, { color: colors.buttonText }]}
-          numberOfLines={1}
+        {collection.title}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** "There's more" — quick tiles into the app's real features. */
+const FEATURE_TILES: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  sub: string;
+  route:
+    | "/settings/order-history"
+    | "/(tabs)/wishlist"
+    | "/settings/affiliates"
+    | "/settings/design-request";
+}[] = [
+  {
+    icon: "cube-outline",
+    label: "Orders",
+    sub: "Track & history",
+    route: "/settings/order-history",
+  },
+  {
+    icon: "heart-outline",
+    label: "Wishlist",
+    sub: "Your saved picks",
+    route: "/(tabs)/wishlist",
+  },
+  {
+    icon: "cash-outline",
+    label: "Earn With the Fam",
+    sub: "Share & earn",
+    route: "/settings/affiliates",
+  },
+  {
+    icon: "color-palette-outline",
+    label: "Design Request",
+    sub: "One-of-a-kind",
+    route: "/settings/design-request",
+  },
+];
+
+function FeatureTiles() {
+  const { colors } = useTheme();
+  const router = useRouter();
+  return (
+    <View style={styles.tileGrid}>
+      {FEATURE_TILES.map((tile) => (
+        <Pressable
+          key={tile.label}
+          onPress={() => router.push(tile.route)}
+          style={({ pressed }) => [
+            styles.tile,
+            {
+              backgroundColor: colors.surface,
+              opacity: pressed ? 0.75 : 1,
+            },
+          ]}
         >
-          {collection.title}
+          <View
+            style={[
+              styles.tileIcon,
+              { backgroundColor: colors.surfaceRaised },
+            ]}
+          >
+            <Ionicons name={tile.icon} size={22} color={colors.text} />
+          </View>
+          <Text style={[styles.tileLabel, { color: colors.text }]}>
+            {tile.label}
+          </Text>
+          <Text style={[styles.tileSub, { color: colors.textMuted }]}>
+            {tile.sub}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+/** Brand banner — the eye + the motto, inverse black/white card. */
+function LoyaltyBanner() {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.loyalty, { backgroundColor: colors.button }]}>
+      <LogoEye size={44} />
+      <View style={styles.loyaltyText}>
+        <Text style={[styles.loyaltyTitle, { color: colors.buttonText }]}>
+          Loyalty above all
+        </Text>
+        <Text
+          style={[styles.loyaltySub, { color: colors.buttonText }]}
+        >
+          Community over profit — quality gear at fair prices, always.
         </Text>
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -306,7 +358,7 @@ function ProductCard({ product }: { product: Product }) {
 }
 
 export default function Home() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const router = useRouter();
   const {
     products,
@@ -381,17 +433,27 @@ export default function Home() {
     ? `Welcome, ${account.profile.firstName}`
     : "Welcome to BeaTrackFam";
 
+  // "Fam favorites": the interest spotlight when one is picked, else
+  // the back half of the catalog so the rail never just repeats drops.
+  const famFavorites = spotlightProducts ?? products.slice(10, 20);
+  const famFavoritesTitle =
+    spotlightProducts && interestCollection
+      ? interestCollection.title
+      : "Fam favorites";
+  const onFamFavoritesSeeAll = () => {
+    if (spotlightProducts && interestCollection) {
+      router.push({
+        pathname: "/(tabs)/collections",
+        params: { collection: interestCollection.handle },
+      });
+    } else {
+      router.push("/(tabs)/collections");
+    }
+  };
+
   return (
     <View style={[styles.safe, { backgroundColor: colors.background }]}>
-      <ScreenHeader
-        title="BeaTrackFam"
-        logo={
-          isDark
-            ? require("../../assets/logo-eye-circle.png")
-            : require("../../assets/logo-eye-circle-light.png")
-        }
-        right={<CartButton />}
-      />
+      <TopBar />
       {catalogLoading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.text} />
@@ -411,61 +473,22 @@ export default function Home() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
-          <BannerSlideshow />
-
-          <HomeSearchBar />
-
           <Text style={[styles.greeting, { color: colors.text }]}>
             {greeting}
           </Text>
           <Text style={[styles.tagline, { color: colors.textMuted }]}>
-            Loyalty Above All
+            Loyalty Above All — let&apos;s find your next piece.
           </Text>
 
           {isGuest && bannerVisible && (
             <GuestBanner onDismiss={dismissBanner} />
           )}
 
-          {spotlightProducts && interestCollection && (
-            <View>
-              <Text style={[styles.eyebrow, { color: colors.textMuted }]}>
-                Picked for you
-              </Text>
-              <View style={styles.sectionHead}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                  {interestCollection.title}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(tabs)/collections",
-                      params: { collection: interestCollection.handle },
-                    })
-                  }
-                  hitSlop={8}
-                >
-                  <Text style={[styles.seeAll, { color: colors.textMuted }]}>
-                    See all
-                  </Text>
-                </Pressable>
-              </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.rail}
-              >
-                {spotlightProducts.slice(0, 8).map((p) => (
-                  <View key={p.id} style={styles.railItem}>
-                    <ProductCard product={p} />
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
-          )}
+          <BannerSlideshow />
 
           <View style={styles.sectionHead}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Featured Collections
+              Shop by collection
             </Text>
             <Pressable
               onPress={() => router.push("/(tabs)/collections")}
@@ -482,13 +505,13 @@ export default function Home() {
             contentContainerStyle={styles.rail}
           >
             {collections.map((c) => (
-              <CollectionCard key={c.id} collection={c} />
+              <CollectionCircle key={c.id} collection={c} />
             ))}
           </ScrollView>
 
           <View style={styles.sectionHead}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              New Arrivals
+              Newest drops
             </Text>
             <Pressable
               onPress={() => router.push("/(tabs)/collections")}
@@ -499,13 +522,52 @@ export default function Home() {
               </Text>
             </Pressable>
           </View>
-          <View style={styles.grid}>
-            {products.slice(0, 8).map((p) => (
-              <View key={p.id} style={styles.gridItem}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.rail}
+          >
+            {products.slice(0, 10).map((p) => (
+              <View key={p.id} style={styles.railItem}>
                 <ProductCard product={p} />
               </View>
             ))}
+          </ScrollView>
+
+          {famFavorites.length > 0 && (
+            <View>
+              <View style={styles.sectionHead}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                  {famFavoritesTitle}
+                </Text>
+                <Pressable onPress={onFamFavoritesSeeAll} hitSlop={8}>
+                  <Text style={[styles.seeAll, { color: colors.textMuted }]}>
+                    See all
+                  </Text>
+                </Pressable>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.rail}
+              >
+                {famFavorites.slice(0, 8).map((p) => (
+                  <View key={p.id} style={styles.railItem}>
+                    <ProductCard product={p} />
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          <View style={styles.sectionHead}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              There&apos;s more
+            </Text>
           </View>
+          <FeatureTiles />
+
+          <LoyaltyBanner />
         </ScrollView>
       )}
     </View>
@@ -561,16 +623,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   dot: { height: 8, borderRadius: 4 },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md,
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  searchInput: { flex: 1, fontSize: 15, paddingVertical: 12 },
-  greeting: { fontSize: 24, fontWeight: "800" },
+  greeting: { ...Type.headline },
   tagline: { fontSize: 14, marginTop: 2, marginBottom: Spacing.md },
   banner: {
     borderRadius: Radius.lg,
@@ -603,36 +656,50 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
     marginBottom: Spacing.sm,
   },
-  sectionTitle: { fontSize: 18, fontWeight: "800" },
-  seeAll: { fontSize: 13, fontWeight: "600" },
+  sectionTitle: { ...Type.section },
+  seeAll: { ...Type.link },
   rail: { gap: Spacing.md, paddingRight: Spacing.md },
   railItem: { width: 160 },
-  eyebrow: {
+  collectionCircle: { width: 88, alignItems: "center", gap: 6 },
+  collectionCircleLabel: {
     fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginTop: Spacing.md,
+    fontWeight: "600",
+    textAlign: "center",
+    lineHeight: 15,
   },
-  collectionCard: { width: 140, borderRadius: Radius.lg },
-  collectionLabel: {
-    borderRadius: Radius.sm,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    marginTop: Spacing.xs,
-    alignItems: "center",
-  },
-  collectionLabelText: { fontSize: 12, fontWeight: "700" },
-  grid: {
+  tileGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginHorizontal: -Spacing.xs,
+    gap: Spacing.sm,
   },
-  gridItem: {
-    width: "50%",
-    paddingHorizontal: Spacing.xs,
-    marginBottom: Spacing.md,
+  tile: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: Radius.xl,
+    padding: Spacing.md,
+    gap: 3,
   },
+  tileIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.xs,
+  },
+  tileLabel: { fontSize: 15, fontWeight: "800" },
+  tileSub: { fontSize: 12 },
+  loyalty: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+    borderRadius: Radius.xl,
+    padding: Spacing.md,
+    marginTop: Spacing.lg,
+  },
+  loyaltyText: { flex: 1, gap: 2 },
+  loyaltyTitle: { fontSize: 17, fontWeight: "800", letterSpacing: 0.2 },
+  loyaltySub: { fontSize: 12, lineHeight: 17, opacity: 0.85 },
   card: { gap: 6 },
   heart: {
     position: "absolute",

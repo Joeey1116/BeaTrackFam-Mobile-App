@@ -12,8 +12,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "../../components/ThemeProvider";
-import { OutlineButton, PrimaryButton, ScreenHeader } from "../../components/ui";
-import { CartButton } from "../../components/CartButton";
+import { PrimaryButton } from "../../components/ui";
+import { TopBar } from "../../components/TopBar";
 import { ProductImage } from "../../components/ProductImage";
 import { useShop } from "../../store/shop";
 import { fetchCollectionProducts, type Collection, type Product } from "../../data/mock";
@@ -150,7 +150,7 @@ export default function Collections() {
 
   return (
     <View style={[styles.safe, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Collections" right={<CartButton />} />
+      <TopBar />
       {catalogLoading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.text} />
@@ -187,56 +187,64 @@ export default function Collections() {
             )}
           </View>
 
-          {activeCollection ? (
-            <View style={styles.switchWrap}>
-              <OutlineButton
-                label={`Viewing: ${activeCollection.title} — pick a different collection`}
-                onPress={clearCollection}
-              />
-            </View>
-          ) : (
-            <>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                Collections
-              </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.rail}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRail}
+          >
+            <Pressable
+              onPress={clearCollection}
+              style={({ pressed }) => [
+                styles.chip,
+                {
+                  backgroundColor: !activeCollection
+                    ? colors.button
+                    : colors.input,
+                  opacity: pressed ? 0.75 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  {
+                    color: !activeCollection
+                      ? colors.buttonText
+                      : colors.text,
+                  },
+                ]}
+                numberOfLines={1}
               >
-                {collections.map((c) => (
-                  <Pressable
-                    key={c.id}
-                    onPress={() => onSelectCollection(c)}
-                    style={styles.collectionCard}
+                All
+              </Text>
+            </Pressable>
+            {collections.map((c) => {
+              const active = activeCollection?.id === c.id;
+              return (
+                <Pressable
+                  key={c.id}
+                  onPress={() => onSelectCollection(c)}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    {
+                      backgroundColor: active ? colors.button : colors.input,
+                      opacity: pressed ? 0.75 : 1,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      { color: active ? colors.buttonText : colors.text },
+                    ]}
+                    numberOfLines={1}
                   >
-                    <ProductImage
-                      image={c.image}
-                      size={120}
-                      rounded={Radius.lg}
-                      iconSize={40}
-                    />
-                    <View
-                      style={[
-                        styles.collectionLabel,
-                        { backgroundColor: colors.button },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.collectionLabelText,
-                          { color: colors.buttonText },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {c.title}
-                      </Text>
-                    </View>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </>
-          )}
+                    {c.title}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
 
           <View style={styles.gridHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
@@ -285,30 +293,26 @@ const styles = StyleSheet.create({
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: Radius.md,
+    borderRadius: Radius.pill,
     paddingHorizontal: Spacing.md,
     gap: Spacing.sm,
     marginBottom: Spacing.md,
   },
   searchInput: { flex: 1, fontSize: 15, paddingVertical: 12 },
   sectionTitle: { fontSize: 18, fontWeight: "800", marginVertical: Spacing.sm },
-  switchWrap: { marginBottom: Spacing.md },
+  chipRail: { gap: Spacing.sm, paddingRight: Spacing.md, marginBottom: Spacing.sm },
+  chip: {
+    borderRadius: Radius.pill,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+  },
+  chipText: { fontSize: 13, fontWeight: "700" },
   gridHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   gridLoader: { marginVertical: Spacing.lg },
-  rail: { gap: Spacing.md, paddingRight: Spacing.md },
-  collectionCard: { width: 120, borderRadius: Radius.lg },
-  collectionLabel: {
-    borderRadius: Radius.sm,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    marginTop: Spacing.xs,
-    alignItems: "center",
-  },
-  collectionLabelText: { fontSize: 12, fontWeight: "700" },
   grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -Spacing.xs },
   gridItem: { width: "50%", paddingHorizontal: Spacing.xs, marginBottom: Spacing.md },
   card: { gap: 6 },
