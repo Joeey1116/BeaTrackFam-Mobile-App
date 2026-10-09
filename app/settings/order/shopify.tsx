@@ -86,7 +86,7 @@ export default function ShopifyOrderDetail() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<void> => {
     if (!id) return;
     const session = await getStoredSession();
     if (!session) {
@@ -105,8 +105,30 @@ export default function ShopifyOrderDetail() {
   }, [id]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    (async () => {
+      if (!id) return;
+      const session = await getStoredSession();
+      if (cancelled) return;
+      if (!session) {
+        setError("Sign in from Order History to view this order.");
+        setLoading(false);
+        return;
+      }
+      const result = await fetchOrderDetail(session.accessToken, String(id));
+      if (cancelled) return;
+      if (result.ok) {
+        setOrder(result.order);
+        setError(null);
+      } else {
+        setError(result.reason);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   const requestCancellation = useCallback(() => {
     if (!order) return;
