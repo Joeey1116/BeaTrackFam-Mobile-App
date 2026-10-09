@@ -56,7 +56,7 @@ export interface ReceiptItem {
   imageUrl: string | null;
 }
 
-export type OrderStatus = "completed" | "cancelled";
+export type OrderStatus = "completed" | "cancelled" | "cancellation-requested";
 
 export interface OrderReceipt {
   /** Shopify order id (gid) when known, otherwise a local id. */
@@ -347,7 +347,7 @@ export async function addOrderReceipt(
 }
 
 /** Marks an order cancelled on the current account's history. */
-export async function cancelOrderReceipt(
+export async function requestCancelOrderReceipt(
   orderId: string
 ): Promise<AppAccount | null> {
   const account = await getCurrentAccount();
@@ -355,7 +355,7 @@ export async function cancelOrderReceipt(
   const next: AppAccount = {
     ...account,
     orders: account.orders.map((o) =>
-      o.id === orderId ? { ...o, status: "cancelled" as const } : o
+      o.id === orderId ? { ...o, status: "cancellation-requested" as const } : o
     ),
   };
   await saveAccount(next);

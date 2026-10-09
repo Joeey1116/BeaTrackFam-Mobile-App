@@ -41,7 +41,7 @@ import {
 } from "../lib/customer";
 import {
   addOrderReceipt as persistOrderReceipt,
-  cancelOrderReceipt,
+  requestCancelOrderReceipt,
   changePassword as changeAccountPassword,
   createAccount,
   deleteCurrentAccount,
@@ -258,7 +258,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   );
 
   const cancelOrder = useCallback(async (orderId: string) => {
-    const next = await cancelOrderReceipt(orderId);
+    const next = await requestCancelOrderReceipt(orderId);
     if (next) setAccount(next);
   }, []);
 

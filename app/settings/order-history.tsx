@@ -172,7 +172,11 @@ export default function OrderHistory() {
                       },
                     ]}
                   >
-                    {o.status === "cancelled" ? "Cancelled" : "Processing"}
+                    {o.status === "cancelled"
+                            ? "Cancelled"
+                            : o.status === "cancellation-requested"
+                              ? "Cancel requested"
+                              : "Processing"}
                   </Text>
                 </View>
                 <Ionicons

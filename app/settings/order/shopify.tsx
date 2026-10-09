@@ -9,6 +9,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Linking,
   ScrollView,
@@ -132,13 +133,25 @@ export default function ShopifyOrderDetail() {
 
   const requestCancellation = useCallback(() => {
     if (!order) return;
-    const subject = encodeURIComponent(`Cancel order ${order.name}`);
-    const body = encodeURIComponent(
-      `Hi BeaTrackFam,\n\nPlease cancel my order ${order.name} (placed ${formatDateTime(order.processedAt)}).\n\nThanks!`
+    Alert.alert(
+      "Request cancellation?",
+      "This opens an email to us with your order number. Send it and we'll cancel it and refund you from our side — your order stays active until you get our confirmation email.",
+      [
+        { text: "Not yet", style: "cancel" },
+        {
+          text: "Open email",
+          onPress: () => {
+            const subject = encodeURIComponent(`Cancel order ${order.name}`);
+            const body = encodeURIComponent(
+              `Hi BeaTrackFam,\n\nPlease cancel my order ${order.name} (placed ${formatDateTime(order.processedAt)}).\n\nThanks!`
+            );
+            Linking.openURL(
+              `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`
+            ).catch(() => {});
+          },
+        },
+      ]
     );
-    Linking.openURL(
-      `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`
-    ).catch(() => {});
   }, [order]);
 
   if (loading) {

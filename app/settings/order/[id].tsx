@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import {
   Alert,
   Image,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +21,8 @@ import {
 import { formatMoney, useShop } from "../../../store/shop";
 import type { OrderReceipt } from "../../../lib/accounts";
 import { Radius, Spacing } from "../../../constants/theme";
+
+const CONTACT_EMAIL = "contact@beatrackfam.info";
 
 function shortRef(id: string): string {
   const tail = id.split("/").pop() ?? id;
@@ -39,24 +42,27 @@ function formatDateTime(iso: string): string {
 function StatusChip({ status }: { status: string }) {
   const { isDark } = useTheme();
   const cancelled = status === "cancelled";
+  const requested = status === "cancellation-requested";
+  const label = cancelled
+    ? "Cancelled"
+    : requested
+      ? "Cancellation requested"
+      : "Completed";
+  const fg = cancelled ? "#E5484D" : requested ? "#B7791F" : "#2E9E5B";
+  const bg = cancelled
+    ? isDark
+      ? "#3A2A2A"
+      : "#FDECEA"
+    : requested
+      ? isDark
+        ? "#3A3320"
+        : "#FBF3D9"
+      : isDark
+        ? "#1E3A2B"
+        : "#E6F6EC";
   return (
-    <View
-      style={[
-        styles.chip,
-        {
-          backgroundColor: cancelled
-            ? isDark
-              ? "#3A2A2A"
-              : "#FDECEA"
-            : isDark
-              ? "#1E3A2B"
-              : "#E6F6EC",
-        },
-      ]}
-    >
-      <Text style={[styles.chipText, { color: cancelled ? "#E5484D" : "#2E9E5B" }]}>
-        {cancelled ? "Cancelled" : "Completed"}
-      </Text>
+    <View style={[styles.chip, { backgroundColor: bg }]}>
+      <Text style={[styles.chipText, { color: fg }]}>{label}</Text>
     </View>
   );
 }
@@ -123,17 +129,26 @@ export default function OrderDetail() {
 
   const onCancel = () => {
     Alert.alert(
-      "Cancel this order?",
-      "This will mark the order as cancelled in the app. If it was already paid on Shopify, contact support@beatrackfam.info about a refund.",
+      "Request cancellation?",
+      "Shopify doesn't let apps cancel an order directly, so this opens an email to us with your order number. Send it and we'll cancel it and refund you from our side — your order stays active until you get our confirmation email.",
       [
         { text: "Keep Order", style: "cancel" },
         {
-          text: "Cancel Order",
+          text: "Email the request",
           style: "destructive",
           onPress: async () => {
             setCancelling(true);
             await cancelOrder(order.id);
             setCancelling(false);
+            const subject = encodeURIComponent(
+              `Cancel order ${shortRef(order.id)}`
+            );
+            const body = encodeURIComponent(
+              `Hi BeaTrackFam,\n\nPlease cancel my order ${shortRef(order.id)} (placed ${formatDateTime(order.placedAt)}, total ${order.totalAmount} ${order.currencyCode}).\n\nThanks!`
+            );
+            Linking.openURL(
+              `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`
+            ).catch(() => {});
             router.back();
           },
         },
@@ -200,10 +215,23 @@ export default function OrderDetail() {
         {status === "completed" ? (
           <View style={styles.ctas}>
             <OutlineButton
-              label={cancelling ? "Cancelling…" : "Cancel Order"}
+              label={cancelling ? "Sending…" : "Request cancellation"}
               onPress={onCancel}
             />
           </View>
+        ) : status === "cancellation-requested" ? (
+          <>
+            <Text style={[styles.note, { color: colors.textMuted }]}>
+              Cancellation requested — you&apos;ll get a confirmation email from us
+              once it&apos;s processed.
+            </Text>
+            <View style={styles.ctas}>
+              <PrimaryButton
+                label="Back to Order History"
+                onPress={() => router.back()}
+              />
+            </View>
+          </>
         ) : (
           <View style={styles.ctas}>
             <PrimaryButton
