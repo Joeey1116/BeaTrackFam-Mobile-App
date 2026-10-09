@@ -307,7 +307,7 @@ export default function ProductDetails() {
               onPress={onWebsite}
             />
             <Text style={[styles.websiteNote, { color: colors.textMuted }]}>
-              This one's only on beatrackfam.info for now — app checkout for it
+              This one is only on beatrackfam.info for now — app checkout for it
               is coming.
             </Text>
           </>
