@@ -76,7 +76,7 @@
       [
         "@stripe/stripe-react-native",
         {
-          "merchantIdentifier": "merchant.info.beatrackfam",
+          "merchantIdentifier": "merchant.com.beatrackfaminc",
           "enableGooglePay": true
         }
       ]

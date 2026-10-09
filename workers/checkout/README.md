@@ -63,11 +63,11 @@ powers the app's product feed / sales channel).
    (`whsec_…`) into the worker as `STRIPE_WEBHOOK_SECRET`.
 
 ## 4. Apple Pay (iOS)
-1. Apple Developer → **Certificates, IDs & Profiles → Identifiers → +**
-   → **Merchant IDs** → register `merchant.info.beatrackfam`
-   (already set in the app's Stripe plugin config).
+1. Apple Merchant ID: Joey already has `merchant.com.beatrackfaminc`
+   — do NOT create another; the app config (app.json Stripe plugin +
+   `lib/checkoutConfig.ts`) already points at it.
 2. Open the app ID `com.beatrackfaminc` → enable **Apple Pay Payment
-   Processing** → link the merchant ID.
+   Processing** → link the merchant ID `merchant.com.beatrackfaminc`.
 3. Next iOS build picks it up automatically (signing syncs it).
 
 ## 5. Ship + verify (live, per Joey — no test mode)

@@ -12,7 +12,7 @@
  * SETUP (one-time, see workers/checkout/README.md for the full guide)
  * 1. Create a Stripe account → paste the PUBLISHABLE key below.
  * 2. Deploy workers/checkout (Cloudflare) → its URL is already filled in.
- * 3. Create an Apple Merchant ID `merchant.info.beatrackfam` (plugin is
+ * 3. Create an Apple Merchant ID `merchant.com.beatrackfaminc` (plugin is
  *    already configured with it in app.json) and associate it with the
  *    app in the Apple Developer portal → Apple Pay turns on.
  *
@@ -26,7 +26,7 @@
 export const STRIPE_PUBLISHABLE_KEY = "";
 
 /** Apple Merchant ID for Apple Pay (created in the Apple Developer portal). */
-export const APPLE_MERCHANT_ID = "merchant.info.beatrackfam";
+export const APPLE_MERCHANT_ID = "merchant.com.beatrackfaminc";
 
 export const CHECKOUT_WORKER_URL =
   "https://beatrackfam-checkout.contact-beatrackfam.workers.dev";
