@@ -17,7 +17,7 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ],
-      "versionCode": 1201,
+      "versionCode": 1202,
       "googleServicesFile": "./google-services.json",
       "blockedPermissions": [
         "android.permission.FOREGROUND_SERVICE",
@@ -36,7 +36,7 @@
         "NSLocationWhenInUseUsageDescription": "BeaTrackFam uses your location to personalize delivery options and show relevant availability.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "1201"
+      "buildNumber": "1202"
     },
     "name": "BeaTrackFam",
     "orientation": "default",
@@ -87,7 +87,7 @@
     ],
     "slug": "beatrackfam",
     "userInterfaceStyle": "automatic",
-    "version": "12.1.0",
+    "version": "12.2.0",
     "web": {
       "bundler": "metro",
       "favicon": "./assets/favicon.png"

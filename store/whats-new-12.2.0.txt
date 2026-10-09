@@ -1,0 +1,6 @@
+## What's new in this version
+- The redesign is complete: sign-in, product pages, cart, and checkout now match the new black & white look
+- New sign-in screens: bold Welcome back / Create account, email + password up front with one big Continue button — Continue with Shopify stays as an option
+- Bolder product pages: full-screen photos, big prices, and pill shop buttons
+- A cleaner cart and checkout in the new style — same fast flow, same promo codes
+Questions or concerns? Email us at contact@beatrackfam.info
