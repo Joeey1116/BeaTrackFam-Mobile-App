@@ -2,8 +2,10 @@ name: Build Android AAB
 
 # MANUAL TRIGGER ONLY, same as the iOS build: this never runs on its own,
 # so it can't burn Actions minutes by accident. Run it from the Actions
-# tab; it produces the Play Store .aab as a downloadable artifact.
-# Nothing is uploaded to Google Play automatically.
+# tab; by default it produces the Play Store .aab as a downloadable
+# artifact. With the "upload_to_play" input ON, it also uploads to
+# Google Play PRODUCTION as a completed release (Joey's Oct 9 pick:
+# straight to production on dispatch; Google still reviews it).
 #
 # Signing: the Play upload keystore lives in the ANDROID_KEYSTORE_BASE64
 # secret (EAS generated that key on 2026-10-01; see the repo docs). Each
@@ -14,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       upload_to_play:
-        description: "Upload the AAB to Google Play (internal track, draft) after building"
+        description: "Upload the AAB to Google Play PRODUCTION (live release) after building"
         type: boolean
         default: false
 
@@ -132,19 +134,20 @@ jobs:
           retention-days: 30
 
       # Play upload mirrors the iOS TestFlight lane, but only when the
-      # run asks for it (input above): internal track, draft status, so
-      # nothing reaches the public listing without Joey's Play Console
-      # click. Needs PLAY_SERVICE_ACCOUNT_JSON (the Play service-account
-      # key, stored as a GitHub secret — never in the repo).
-      - name: Upload the AAB to Google Play (internal, draft)
+      # run asks for it (input above). Joey's pick (Oct 9): straight to
+      # PRODUCTION as a completed release on dispatch — Google still
+      # reviews it, but no Play Console click is needed from him. Needs
+      # PLAY_SERVICE_ACCOUNT_JSON (service-account key, GitHub secret —
+      # never in the repo).
+      - name: Upload the AAB to Google Play (production)
         if: ${{ inputs.upload_to_play }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.beatrackfaminc
           releaseFiles: ${{ steps.ver.outputs.aab_file }}
-          track: internal
-          status: draft
+          track: production
+          status: completed
 
       - name: Remove the keystore
         if: always()
