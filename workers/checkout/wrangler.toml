@@ -1,0 +1,9 @@
+name = "beatrackfam-checkout"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+
+# Create the KV namespace first, then paste its id here:
+#   npx wrangler kv:namespace create CHECKOUT_KV
+[[kv_namespaces]]
+binding = "CHECKOUT_KV"
+id = "PASTE_KV_NAMESPACE_ID_HERE"

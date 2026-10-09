@@ -1,17 +1,19 @@
 /**
  * Checkout — screen-05 blueprint.
  *
- * The buyer fills in contact + shipping details right here in the app,
- * then Shopify's real checkout opens as a native sheet (no browser).
- * If a Storefront API token is configured (see lib/storefront.ts), the
- * details are attached to the cart so Shopify pre-fills them and the
- * buyer just pays. Payment is always processed by Shopify — the app
- * never sees card numbers.
+ * The buyer fills in contact + shipping details right here in the app.
+ * When in-app checkout is set up (Stripe publishable key in
+ * lib/checkoutConfig.ts), they pay WITHOUT leaving the app — card,
+ * Apple Pay, Google Pay, Affirm/Afterpay/Klarna — and the checkout
+ * worker creates the paid order in Shopify after the money lands.
+ * Until then, Shopify's checkout opens as a native sheet (or browser)
+ * with the details pre-filled, like before.
  */
 import React, { useEffect, useState } from "react";
 import {
   Alert,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -36,6 +38,12 @@ import {
   onCheckoutEvent,
   presentNativeCheckout,
 } from "../lib/nativeCheckout";
+import { useStripe } from "@stripe/stripe-react-native";
+import {
+  isInAppCheckoutEnabled,
+  isStripeKeyTest,
+} from "../lib/checkoutConfig";
+import { confirmInAppOrder, quoteInAppCheckout } from "../lib/inAppCheckout";
 
 const PAYMENT_METHODS = [
   { label: "Apple Pay", icon: "logo-apple" },
@@ -43,6 +51,15 @@ const PAYMENT_METHODS = [
   { label: "Shop Pay", icon: "bag-outline" },
   { label: "PayPal", icon: "logo-paypal" },
   { label: "Credit / Debit Card", icon: "card-outline" },
+] as const;
+
+/** Methods handled by Stripe inside the app (Shop Pay / PayPal stay
+ *  website-checkout only — see workers/checkout/README.md). */
+const IN_APP_PAYMENT_METHODS = [
+  { label: "Apple Pay", icon: "logo-apple" },
+  { label: "Google Pay", icon: "logo-google" },
+  { label: "Credit / Debit Card", icon: "card-outline" },
+  { label: "Affirm / Afterpay / Klarna", icon: "cash-outline" },
 ] as const;
 
 const COUNTRIES = [
@@ -70,6 +87,7 @@ async function openCheckoutInBrowser(checkoutUrl: string): Promise<void> {
 export default function Checkout() {
   const { colors } = useTheme();
   const router = useRouter();
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const {
     cartLines,
     cartCount,
@@ -178,6 +196,123 @@ export default function Checkout() {
     return null;
   };
 
+  /**
+   * Full in-app payment: Shopify (via the worker) validates promo
+   * codes, shipping and tax first; Stripe takes the money in-app;
+   * the worker then creates the paid Shopify order so Printify
+   * fulfills it like always. A declined card shows Stripe's own
+   * error inside the payment sheet — no order, no charge.
+   */
+  const payInApp = async (
+    liveLines: typeof cartLines,
+    buyer: CheckoutBuyer
+  ) => {
+    const quote = await quoteInAppCheckout(
+      liveLines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
+      promoCodes,
+      buyer
+    );
+    if (quote.rejectedCodes.length > 0) {
+      setPromoCodes((codes) =>
+        codes.filter((c) => !quote.rejectedCodes.includes(c))
+      );
+      Alert.alert(
+        "Promo code didn't apply",
+        `${quote.rejectedCodes.join(", ")} ${
+          quote.rejectedCodes.length === 1 ? "was" : "were"
+        } removed. Review your total, then tap Pay again.`
+      );
+      return;
+    }
+
+    const { error: initError } = await initPaymentSheet({
+      merchantDisplayName: "BeaTrackFam",
+      paymentIntentClientSecret: quote.clientSecret,
+      returnURL: "beatrackfam://stripe-redirect",
+      ...(Platform.OS === "ios"
+        ? {
+            applePay: {
+              merchantCountryCode: "US",
+              cartItems: [
+                {
+                  paymentType: "Immediate" as const,
+                  label: "BeaTrackFam",
+                  amount: quote.totals.total.toFixed(2),
+                },
+              ],
+            },
+          }
+        : {}),
+      ...(Platform.OS === "android"
+        ? {
+            googlePay: {
+              merchantCountryCode: "US",
+              testEnv: isStripeKeyTest(),
+              currencyCode: quote.currency,
+            },
+          }
+        : {}),
+      defaultBillingDetails: {
+        email: buyer.email,
+        name: `${buyer.firstName} ${buyer.lastName}`.trim(),
+        phone: buyer.phone,
+      },
+      defaultShippingDetails: {
+        name: `${buyer.firstName} ${buyer.lastName}`.trim(),
+        phone: buyer.phone,
+        address: {
+          line1: buyer.address1,
+          line2: buyer.address2,
+          city: buyer.city,
+          state: buyer.provinceCode,
+          postalCode: buyer.zip,
+          country: buyer.countryCode,
+        },
+      },
+    });
+    if (initError) {
+      Alert.alert("Couldn't start payment", initError.message);
+      return;
+    }
+
+    const { error: payError } = await presentPaymentSheet();
+    if (payError) {
+      if ((payError as { code?: string }).code !== "Canceled") {
+        Alert.alert("Payment didn't go through", payError.message);
+      }
+      return;
+    }
+
+    // Money landed. Create the paid Shopify order (the Stripe webhook
+    // runs the same worker step as a backup, idempotently).
+    let orderName: string | null = null;
+    try {
+      const order = await confirmInAppOrder(quote.paymentIntentId);
+      orderName = order.orderName;
+    } catch {
+      orderName = null;
+    }
+
+    await addOrderReceipt({
+      id: orderName ?? `stripe-${quote.paymentIntentId}`,
+      totalAmount: quote.totals.total.toFixed(2),
+      currencyCode: quote.currency,
+      itemCount: quote.lines.reduce((n, l) => n + l.quantity, 0),
+      email: buyer.email,
+      status: "completed",
+      items: quote.lines.map((l) => ({
+        productTitle: l.title,
+        variantTitle: l.variantTitle,
+        quantity: l.quantity,
+        unitAmount: l.unitAmount.toFixed(2),
+        currencyCode: quote.currency,
+        imageUrl: l.imageUrl,
+      })),
+    });
+    clearCart();
+    router.replace("/thank-you");
+  };
+
   const onPay = async () => {
     if (cartLines.length === 0 || busy) return;
     const problem = validate();
@@ -209,20 +344,26 @@ export default function Checkout() {
         );
       }
 
+      const buyer: CheckoutBuyer = {
+        email: email.trim(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        address1: address1.trim(),
+        address2: address2.trim() || undefined,
+        city: city.trim(),
+        provinceCode: province.trim(),
+        zip: zip.trim(),
+        countryCode: country,
+        phone: phone.trim() || undefined,
+      };
+
+      if (isInAppCheckoutEnabled()) {
+        await payInApp(liveLines, buyer);
+        return;
+      }
+
       let checkoutUrl: string;
       if (isStorefrontConfigured()) {
-        const buyer: CheckoutBuyer = {
-          email: email.trim(),
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          address1: address1.trim(),
-          address2: address2.trim() || undefined,
-          city: city.trim(),
-          provinceCode: province.trim(),
-          zip: zip.trim(),
-          countryCode: country,
-          phone: phone.trim() || undefined,
-        };
         checkoutUrl = await createCartCheckoutUrl(
           liveLines.map((l) => ({
             variantId: l.variantId,
@@ -641,7 +782,10 @@ export default function Checkout() {
           Accepted Payment Methods
         </Text>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
-          {PAYMENT_METHODS.map((m) => (
+          {(isInAppCheckoutEnabled()
+            ? IN_APP_PAYMENT_METHODS
+            : PAYMENT_METHODS
+          ).map((m) => (
             <View key={m.label} style={styles.payRow}>
               <Ionicons name={m.icon} size={20} color={colors.text} />
               <Text style={[styles.payLabel, { color: colors.text }]}>

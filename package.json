@@ -1,6 +1,6 @@
 {
   "name": "@joeey1116/beatrackfam-mobile-app",
-  "version": "11.0.13",
+  "version": "11.0.14",
   "main": "expo-router/entry",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
@@ -10,6 +10,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@shopify/checkout-sheet-kit": "^3.9.1",
+    "@stripe/stripe-react-native": "0.64.0",
     "expo": "~57.0.26",
     "expo-auth-session": "~57.0.13",
     "expo-blur": "~57.0.3",
