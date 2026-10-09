@@ -201,6 +201,55 @@ interface CartCreateResponse {
   errors?: { message: string }[];
 }
 
+const NODES_QUERY = `
+  query Nodes($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on ProductVariant {
+        id
+      }
+    }
+  }
+`;
+
+/**
+ * Returns the subset of the given variant ids (numeric tails) that no longer
+ * exist in Shopify — e.g. a product was deleted and re-added under new ids
+ * while an old cart line still points at the dead variant. Fails open: any
+ * network/API problem returns an empty set so checkout is never blocked by
+ * the validation call itself.
+ */
+export async function findDeadVariantIds(
+  variantIds: string[]
+): Promise<Set<string>> {
+  const dead = new Set<string>();
+  if (variantIds.length === 0 || !isStorefrontConfigured()) return dead;
+  try {
+    const gids = variantIds.map(
+      (v) => `gid://shopify/ProductVariant/${v}`
+    );
+    const res = await fetch(STOREFRONT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": STOREFRONT_ACCESS_TOKEN.trim(),
+      },
+      body: JSON.stringify({ query: NODES_QUERY, variables: { ids: gids } }),
+    });
+    if (!res.ok) return dead;
+    const json = (await res.json()) as {
+      data?: { nodes?: ({ id: string } | null)[] };
+      errors?: { message: string }[];
+    };
+    if (json.errors?.length || !json.data?.nodes) return dead;
+    json.data.nodes.forEach((node, i) => {
+      if (!node) dead.add(variantIds[i]);
+    });
+    return dead;
+  } catch {
+    return dead;
+  }
+}
+
 /**
  * Creates a Shopify cart with the given lines and buyer identity, and
  * returns the checkout URL (with contact/shipping pre-filled).
@@ -208,7 +257,8 @@ interface CartCreateResponse {
  */
 export async function createCartCheckoutUrl(
   lines: CartLineInput[],
-  buyer: CheckoutBuyer
+  buyer: CheckoutBuyer,
+  discountCodes: string[] = []
 ): Promise<string> {
   if (!isStorefrontConfigured()) {
     throw new Error("Storefront API token is not configured.");
@@ -219,6 +269,7 @@ export async function createCartCheckoutUrl(
       merchandiseId: `gid://shopify/ProductVariant/${l.variantId}`,
       quantity: l.quantity,
     })),
+    ...(discountCodes.length > 0 ? { discountCodes } : {}),
     buyerIdentity: {
       email: buyer.email,
       ...(buyer.phone ? { phone: buyer.phone } : {}),

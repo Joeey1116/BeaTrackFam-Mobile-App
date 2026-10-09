@@ -241,6 +241,54 @@ export async function startLogin(): Promise<LoginResult> {
 
 /* ------------------------------- Customer API ------------------------------ */
 
+// Shopify rejects Customer Account API GraphQL calls that lack an `Origin`
+// header whose value is registered for the client (missing -> 401
+// invalid_token) or a `user-agent` header (missing -> 403). That was the
+// root cause of the Oct 1, 2026 "Couldn't load your profile from Shopify"
+// failure. Try the shop's registered origins in order and cache the one
+// Shopify accepts so later calls go straight to it.
+const ORIGIN_CANDIDATES = [
+  "https://beatrackfam.info",
+  "https://rp4j61-zf.myshopify.com",
+];
+let workingOrigin: string | null = null;
+
+async function customerApiFetch(
+  accessToken: string,
+  body: Record<string, unknown>
+): Promise<Response | null> {
+  const origins = workingOrigin
+    ? [workingOrigin, ...ORIGIN_CANDIDATES.filter((o) => o !== workingOrigin)]
+    : ORIGIN_CANDIDATES;
+  let lastRes: Response | null = null;
+  for (const origin of origins) {
+    try {
+      const res = await fetch(graphqlEndpoint(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Customer Account API expects the access token as a Bearer <redacted>
+          Authorization: `Bearer ${accessToken}`,
+          Origin: origin,
+          "user-agent": "BeaTrackFam-App",
+        },
+        body: JSON.stringify(body),
+      });
+      lastRes = res;
+      if (res.ok) {
+        workingOrigin = origin;
+        return res;
+      }
+      // 401 (Origin rejected) / 403 (header rejected): try the next
+      // registered-origin candidate instead of giving up.
+      if (res.status !== 401 && res.status !== 403) return res;
+    } catch {
+      return null;
+    }
+  }
+  return lastRes;
+}
+
 const CUSTOMER_QUERY = `
   query CustomerProfile {
     customer {
@@ -280,16 +328,10 @@ export async function fetchCustomer(
   accessToken: string
 ): Promise<{ ok: true; customer: Customer } | { ok: false; reason: string }> {
   try {
-    const res = await fetch(graphqlEndpoint(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // Customer Account API expects the access token as a Bearer token.
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ query: CUSTOMER_QUERY }),
+    const res = await customerApiFetch(accessToken, {
+      query: CUSTOMER_QUERY,
     });
-    if (!res.ok) {
+    if (!res || !res.ok) {
       return { ok: false, reason: "Couldn't load your profile from Shopify." };
     }
     const json = (await res.json()) as {
@@ -455,17 +497,11 @@ export async function fetchOrderDetail(
 ): Promise<{ ok: true; order: CustomerOrderDetail } | { ok: false; reason: string }> {
   for (const query of [ORDER_DETAIL_RICH, ORDER_DETAIL_BASIC]) {
     try {
-      const res = await fetch(graphqlEndpoint(), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // Match fetchCustomer exactly: the Customer Account API expects the
-          // access token as a Bearer <redacted>
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ query, variables: { id: orderId } }),
+      const res = await customerApiFetch(accessToken, {
+        query,
+        variables: { id: orderId },
       });
-      if (!res.ok) continue;
+      if (!res || !res.ok) continue;
       const json = (await res.json()) as {
         data?: { order?: any };
         errors?: { message: string }[];

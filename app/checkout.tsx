@@ -28,6 +28,7 @@ import { buildCartPermalink } from "../data/mock";
 import { Radius, Spacing } from "../constants/theme";
 import {
   createCartCheckoutUrl,
+  findDeadVariantIds,
   isStorefrontConfigured,
   type CheckoutBuyer,
 } from "../lib/storefront";
@@ -74,6 +75,7 @@ export default function Checkout() {
     cartCount,
     subtotal,
     clearCart,
+    removeLine,
     account,
     profile,
     addOrderReceipt,
@@ -109,6 +111,26 @@ export default function Checkout() {
   );
   const [phone, setPhone] = useState(profile.phone || "");
   const [busy, setBusy] = useState(false);
+  const [promoInput, setPromoInput] = useState("");
+  const [promoCodes, setPromoCodes] = useState<string[]>([]);
+
+  const addPromoCode = () => {
+    const code = promoInput.trim().toUpperCase();
+    if (!code) return;
+    if (promoCodes.length >= 2) {
+      Alert.alert(
+        "Two-code limit",
+        "You can use up to 2 promo codes per order."
+      );
+      return;
+    }
+    if (promoCodes.includes(code)) {
+      Alert.alert("Already added", "That code is already on this order.");
+      return;
+    }
+    setPromoCodes((codes) => [...codes, code]);
+    setPromoInput("");
+  };
 
   // Pre-fill from the signed-in account + default saved address.
 
@@ -144,6 +166,28 @@ export default function Checkout() {
     }
     setBusy(true);
     try {
+      // Prune cart lines whose variant no longer exists in Shopify (product
+      // deleted/re-added under new ids) — otherwise cartCreate dies with
+      // "merchandise does not exist" and checkout can't start at all.
+      const dead = await findDeadVariantIds(cartLines.map((l) => l.variantId));
+      const liveLines = cartLines.filter((l) => !dead.has(l.variantId));
+      if (dead.size > 0) {
+        cartLines
+          .filter((l) => dead.has(l.variantId))
+          .forEach((l) => removeLine(l.id));
+        if (liveLines.length === 0) {
+          Alert.alert(
+            "Item no longer available",
+            "That item isn't sold anymore, so we removed it from your cart."
+          );
+          return;
+        }
+        Alert.alert(
+          "Cart updated",
+          "An item that's no longer available was removed from your cart. The rest is ready to check out."
+        );
+      }
+
       let checkoutUrl: string;
       if (isStorefrontConfigured()) {
         const buyer: CheckoutBuyer = {
@@ -159,14 +203,18 @@ export default function Checkout() {
           phone: phone.trim() || undefined,
         };
         checkoutUrl = await createCartCheckoutUrl(
-          cartLines.map((l) => ({
+          liveLines.map((l) => ({
             variantId: l.variantId,
             quantity: l.quantity,
           })),
-          buyer
+          buyer,
+          promoCodes
         );
       } else {
-        checkoutUrl = buildCartPermalink(cartLines);
+        checkoutUrl = buildCartPermalink(liveLines);
+        if (promoCodes.length > 0) {
+          checkoutUrl += `?discount=${encodeURIComponent(promoCodes[0])}`;
+        }
       }
 
       const presented = await presentNativeCheckout(checkoutUrl);
@@ -393,6 +441,55 @@ export default function Checkout() {
         </View>
 
         <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          Promo Code
+        </Text>
+        <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <View style={styles.promoRow}>
+            <View style={styles.promoField}>
+              <TextField
+                label=""
+                placeholder="Promo code"
+                value={promoInput}
+                onChangeText={setPromoInput}
+                autoCapitalize="characters"
+              />
+            </View>
+            <Pressable
+              onPress={addPromoCode}
+              style={[
+                styles.promoButton,
+                { backgroundColor: colors.text },
+              ]}
+            >
+              <Text style={[styles.promoButtonText, { color: colors.background }]}>
+                Apply
+              </Text>
+            </Pressable>
+          </View>
+          {promoCodes.map((code) => (
+            <View key={code} style={styles.promoChipRow}>
+              <Ionicons name="pricetag" size={15} color={colors.text} />
+              <Text style={[styles.promoChipText, { color: colors.text }]}>
+                {code}
+              </Text>
+              <Pressable
+                onPress={() =>
+                  setPromoCodes((codes) => codes.filter((c) => c !== code))
+                }
+                hitSlop={8}
+              >
+                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          ))}
+          <Text style={[styles.promoNote, { color: colors.textMuted }]}>
+            {promoCodes.length >= 2
+              ? "Two codes on this order — that's the max."
+              : "Add up to 2 codes. They sync straight to your Shopify checkout."}
+          </Text>
+        </View>
+
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
           Order Summary
         </Text>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
@@ -507,6 +604,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   countryLabel: { fontSize: 14 },
+  promoRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: Spacing.sm,
+  },
+  promoField: { flex: 1 },
+  promoButton: {
+    borderRadius: Radius.md,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+  },
+  promoButtonText: { fontSize: 14, fontWeight: "800" },
+  promoChipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: Spacing.sm,
+  },
+  promoChipText: { flex: 1, fontSize: 14, fontWeight: "700" },
+  promoNote: { fontSize: 12, marginTop: Spacing.sm },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
