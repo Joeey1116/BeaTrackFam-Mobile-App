@@ -252,6 +252,7 @@ const ORIGIN_CANDIDATES = [
   "https://rp4j61-zf.myshopify.com",
 ];
 let workingOrigin: string | null = null;
+let workingAuthForm: "bearer" | "raw" | null = null;
 
 async function customerApiFetch(
   accessToken: string,
@@ -260,30 +261,39 @@ async function customerApiFetch(
   const origins = workingOrigin
     ? [workingOrigin, ...ORIGIN_CANDIDATES.filter((o) => o !== workingOrigin)]
     : ORIGIN_CANDIDATES;
+  const authForms: ("bearer" | "raw")[] = workingAuthForm
+    ? [workingAuthForm, workingAuthForm === "bearer" ? "raw" : "bearer"]
+    : ["bearer", "raw"];
   let lastRes: Response | null = null;
-  for (const origin of origins) {
-    try {
-      const res = await fetch(graphqlEndpoint(), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // Customer Account API expects the access token as a Bearer <redacted>
-          Authorization: `Bearer ${accessToken}`,
-          Origin: origin,
-          "user-agent": "BeaTrackFam-App",
-        },
-        body: JSON.stringify(body),
-      });
-      lastRes = res;
-      if (res.ok) {
-        workingOrigin = origin;
-        return res;
+  for (const form of authForms) {
+    for (const origin of origins) {
+      try {
+        const res = await fetch(graphqlEndpoint(), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            // Shopify's Customer Account API is inconsistent across client
+            // types about `Bearer ` vs the raw token, so we try both and
+            // cache the form Shopify accepts.
+            Authorization:
+              form === "bearer" ? `Bearer ${accessToken}` : accessToken,
+            Origin: origin,
+            "user-agent": "BeaTrackFam-App",
+          },
+          body: JSON.stringify(body),
+        });
+        lastRes = res;
+        if (res.ok) {
+          workingOrigin = origin;
+          workingAuthForm = form;
+          return res;
+        }
+        // 401 (Origin/token rejected) / 403 (header rejected): try the next
+        // combination instead of giving up.
+        if (res.status !== 401 && res.status !== 403) return res;
+      } catch {
+        return null;
       }
-      // 401 (Origin rejected) / 403 (header rejected): try the next
-      // registered-origin candidate instead of giving up.
-      if (res.status !== 401 && res.status !== 403) return res;
-    } catch {
-      return null;
     }
   }
   return lastRes;
@@ -332,7 +342,12 @@ export async function fetchCustomer(
       query: CUSTOMER_QUERY,
     });
     if (!res || !res.ok) {
-      return { ok: false, reason: "Couldn't load your profile from Shopify." };
+      return {
+        ok: false,
+        reason: res
+          ? `Couldn't load your profile from Shopify (error ${res.status}).`
+          : "Couldn't reach Shopify — check your connection and try again.",
+      };
     }
     const json = (await res.json()) as {
       data?: { customer?: any };
