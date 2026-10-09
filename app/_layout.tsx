@@ -32,6 +32,7 @@ export default function RootLayout() {
           <Stack.Screen name="profile/interests" />
           <Stack.Screen name="profile/socials" />
           <Stack.Screen name="settings/design-request" />
+          <Stack.Screen name="settings/affiliates" />
           <Stack.Screen name="settings/support" />
           <Stack.Screen name="settings/faq" />
           <Stack.Screen name="settings/order-history" />

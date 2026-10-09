@@ -135,6 +135,12 @@ export default function SettingsHub() {
           onPress={() => router.push("/settings/design-request")}
         />
         <MenuRow
+          icon={icon("cash-outline")}
+          title="Earn With the Fam"
+          subtitle="Share the brand — earn when your people shop"
+          onPress={() => router.push("/settings/affiliates")}
+        />
+        <MenuRow
           icon={icon("share-social-outline")}
           title="Share App"
           subtitle="Tell your friends about BeaTrackFam"
