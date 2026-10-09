@@ -177,14 +177,14 @@ export default function Checkout() {
           .forEach((l) => removeLine(l.id));
         if (liveLines.length === 0) {
           Alert.alert(
-            "Item no longer available",
-            "That item isn't sold anymore, so we removed it from your cart."
+            "Not available in the app yet",
+            "That item isn't available to buy in the app right now, so we removed it from your cart. You can still grab it on our website."
           );
           return;
         }
         Alert.alert(
           "Cart updated",
-          "An item that's no longer available was removed from your cart. The rest is ready to check out."
+          "An item that isn't available in the app right now was removed from your cart. The rest is ready to check out."
         );
       }
 

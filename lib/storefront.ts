@@ -201,6 +201,78 @@ interface CartCreateResponse {
   errors?: { message: string }[];
 }
 
+const PURCHASABLE_QUERY = `
+  query Purchasable($after: String) {
+    products(first: 100, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      edges {
+        node {
+          variants(first: 100) {
+            edges { node { id } }
+          }
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * Every variant id (numeric tail) purchasable through the Storefront API —
+ * i.e. published to the app's sales channel. The app catalog itself comes
+ * from the online-store channel (products.json), which can list products
+ * that were never published to the app channel; those products display fine
+ * but cartCreate rejects them ("merchandise does not exist"). Returns null
+ * when the check itself fails, so callers fail open and never hide buyable
+ * products behind a network error.
+ */
+export async function fetchPurchasableVariantIds(): Promise<Set<string> | null> {
+  if (!isStorefrontConfigured()) return null;
+  const ids = new Set<string>();
+  let after: string | null = null;
+  try {
+    for (let page = 0; page < 10; page++) {
+      const res: Response = await fetch(STOREFRONT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Storefront-Access-Token": STOREFRONT_ACCESS_TOKEN.trim(),
+        },
+        body: JSON.stringify({
+          query: PURCHASABLE_QUERY,
+          variables: { after },
+        }),
+      });
+      if (!res.ok) return null;
+      const json = (await res.json()) as {
+        data?: {
+          products?: {
+            pageInfo: { hasNextPage: boolean; endCursor: string };
+            edges: {
+              node: {
+                variants: { edges: { node: { id: string } }[] };
+              };
+            }[];
+          };
+        };
+        errors?: { message: string }[];
+      };
+      if (json.errors?.length) return null;
+      const conn = json.data?.products;
+      if (!conn) return null;
+      for (const edge of conn.edges) {
+        for (const v of edge.node.variants.edges) {
+          ids.add(gidTail(v.node.id));
+        }
+      }
+      if (!conn.pageInfo.hasNextPage) break;
+      after = conn.pageInfo.endCursor;
+    }
+    return ids;
+  } catch {
+    return null;
+  }
+}
+
 const NODES_QUERY = `
   query Nodes($ids: [ID!]!) {
     nodes(ids: $ids) {

@@ -18,6 +18,7 @@ import React, {
   useState,
 } from "react";
 import type { ReactNode } from "react";
+import { fetchPurchasableVariantIds } from "../lib/storefront";
 import {
   INITIAL_CART,
   INITIAL_WISHLIST_IDS,
@@ -75,6 +76,7 @@ interface ShopContextValue {
     variant: ProductVariant,
     quantity: number
   ) => void;
+  isVariantPurchasable: (variantId: string) => boolean;
   updateQuantity: (lineId: string, quantity: number) => void;
   removeLine: (lineId: string) => void;
   clearCart: () => void;
@@ -127,6 +129,8 @@ let lineSeq = 100;
 
 export function ShopProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [purchasableVariantIds, setPurchasableVariantIds] =
+    useState<Set<string> | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -400,11 +404,12 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     setCatalogLoading(true);
     setCatalogError(null);
-    Promise.all([fetchProducts(), fetchCollections()])
-      .then(([ps, cs]) => {
+    Promise.all([fetchProducts(), fetchCollections(), fetchPurchasableVariantIds()])
+      .then(([ps, cs, purchasableIds]) => {
         if (cancelled) return;
         setProducts(ps);
         setCollections(cs);
+        setPurchasableVariantIds(purchasableIds);
         setCatalogLoading(false);
       })
       .catch((e) => {
@@ -427,6 +432,14 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   const getProduct = useCallback(
     (numericId: string) => products.find((p) => p.numericId === numericId),
     [products]
+  );
+
+  // True unless we know Shopify's Storefront API can't sell this variant
+  // (product never published to the app sales channel). Unknown = fail open.
+  const isVariantPurchasable = useCallback(
+    (variantId: string) =>
+      purchasableVariantIds === null || purchasableVariantIds.has(variantId),
+    [purchasableVariantIds]
   );
 
   const addToCart = useCallback(
@@ -510,6 +523,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       cartCount,
       subtotal,
       addToCart,
+      isVariantPurchasable,
       updateQuantity,
       removeLine,
       clearCart,

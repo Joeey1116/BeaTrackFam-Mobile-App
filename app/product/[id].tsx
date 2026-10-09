@@ -7,6 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
+import * as Linking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "../../components/ThemeProvider";
@@ -24,7 +25,13 @@ export default function ProductDetails() {
   const { colors } = useTheme();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getProduct, addToCart, toggleWishlist, isWishlisted } = useShop();
+  const {
+    getProduct,
+    addToCart,
+    toggleWishlist,
+    isWishlisted,
+    isVariantPurchasable,
+  } = useShop();
 
   const product = getProduct(id ?? "");
 
@@ -107,6 +114,10 @@ export default function ProductDetails() {
 
   const wished = isWishlisted(product.id);
   const soldOut = !product.availableForSale;
+  // In the catalog (online-store channel) but not published to the app
+  // sales channel: show it, but send buyers to the website instead of
+  // into a checkout Shopify will refuse.
+  const websiteOnly = !soldOut && !isVariantPurchasable(variant.id);
   const purchasable = variant.availableForSale && !soldOut;
 
   const galleryImages =
@@ -118,6 +129,10 @@ export default function ProductDetails() {
   const onAdd = () => {
     addToCart(product, variant, quantity);
     router.push("/cart");
+  };
+
+  const onWebsite = () => {
+    void Linking.openURL(`https://beatrackfam.info/products/${product.handle}`);
   };
 
   return (
@@ -285,17 +300,31 @@ export default function ProductDetails() {
             </View>
           </View>
         )}
-        <PrimaryButton
-          label={soldOut ? "Sold Out" : "Add to Cart"}
-          onPress={onAdd}
-          disabled={soldOut || !variant.availableForSale}
-        />
+        {websiteOnly ? (
+          <>
+            <PrimaryButton
+              label="Available on our website"
+              onPress={onWebsite}
+            />
+            <Text style={[styles.websiteNote, { color: colors.textMuted }]}>
+              This one's only on beatrackfam.info for now — app checkout for it
+              is coming.
+            </Text>
+          </>
+        ) : (
+          <PrimaryButton
+            label={soldOut ? "Sold Out" : "Add to Cart"}
+            onPress={onAdd}
+            disabled={soldOut || !variant.availableForSale}
+          />
+        )}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  websiteNote: { fontSize: 12, textAlign: "center", marginTop: 10 },
   safe: { flex: 1 },
   content: { padding: Spacing.md, paddingBottom: Spacing.xl },
   missing: { flex: 1, alignItems: "center", justifyContent: "center" },
