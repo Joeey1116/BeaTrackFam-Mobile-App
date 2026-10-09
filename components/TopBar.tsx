@@ -3,8 +3,9 @@
  *
  * Layout (Klarna/top-shopping-app structure, BeaTrackFam black & white):
  * circular avatar w/ initial → wide pill search → bell (Inbox) + Ask Bea
- * sparkle + cart. Used on the four tab screens. The Inbox badge stays
- * hidden until real inbox data lands in Phase 2 (unreadCount = 0).
+ * sparkle + cart. Used on the four tab screens. The bell badge is live
+ * since Phase 2: it counts Inbox items newer than the last-seen
+ * timestamp (lib/inbox.ts) and hides at zero.
  */
 import React from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
@@ -15,6 +16,7 @@ import { useTheme } from "./ThemeProvider";
 import { CartButton } from "./CartButton";
 import { LogoEye } from "./LogoEye";
 import { useShop } from "../store/shop";
+import { useInbox } from "../lib/inbox";
 import { Radius, Spacing } from "../constants/theme";
 
 function AvatarButton() {
@@ -60,9 +62,10 @@ function AvatarButton() {
   );
 }
 
-export function TopBar({ unreadCount = 0 }: { unreadCount?: number }) {
+export function TopBar() {
   const { colors } = useTheme();
   const router = useRouter();
+  const { unreadCount } = useInbox();
 
   return (
     <SafeAreaView
@@ -110,7 +113,11 @@ export function TopBar({ unreadCount = 0 }: { unreadCount?: number }) {
                   borderColor: colors.header,
                 },
               ]}
-            />
+            >
+              <Text style={styles.badgeText}>
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </Text>
+            </View>
           )}
         </Pressable>
         <Pressable
@@ -164,13 +171,17 @@ const styles = StyleSheet.create({
   iconBtn: { padding: 2 },
   badgeDot: {
     position: "absolute",
-    top: 0,
-    right: 0,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    top: -4,
+    right: -6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     borderWidth: 2,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  badgeText: { color: "#FFFFFF", fontSize: 10, fontWeight: "800" },
   sparkleBtn: {
     width: 36,
     height: 36,

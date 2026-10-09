@@ -5,33 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../components/ThemeProvider";
 import { ScreenHeader } from "../../components/ui";
 import { Radius, Spacing } from "../../constants/theme";
-
-const FAQS = [
-  {
-    q: "Where do I track my order?",
-    a: "In-app order history is coming soon — we're putting the finishing touches on it. You'll still get an order confirmation and a tracking email from the shop as soon as your order ships.",
-  },
-  {
-    q: "How do returns and refunds work?",
-    a: "If your item arrives damaged or there's a problem with your order, email contact@beatrackfam.info within a reasonable time and we'll make it right. Read the full Refund Policy under Settings → App Settings → Policies.",
-  },
-  {
-    q: "When will my order ship?",
-    a: "Custom merch is made to order — most pieces ship within the window listed in our Shipping Policy (Settings → App Settings → Policies). You'll get tracking as soon as it leaves.",
-  },
-  {
-    q: "How do I change my shipping address?",
-    a: "Log in, open your Profile → Saved Addresses, and edit or add addresses there. To change the address on an order that already shipped, email us right away and we'll try to catch it.",
-  },
-  {
-    q: "Is my payment information safe?",
-    a: "Yes. Checkout happens on Shopify's secure servers — cards, Apple Pay and Google Pay are all processed by Shopify. We never see or store your card numbers.",
-  },
-  {
-    q: "How do custom design requests work?",
-    a: "Open Settings → Custom Design Request and describe your idea. It opens an email to us with your details — we'll reply to talk through the design, pricing and timing.",
-  },
-];
+import { FAQS } from "../../data/faq";
 
 function FaqItem({ q, a }: { q: string; a: string }) {
   const { colors } = useTheme();

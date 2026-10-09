@@ -61,6 +61,8 @@ export interface Product {
   price: MoneyV2;
   compareAtPrice: MoneyV2 | null;
   availableForSale: boolean;
+  /** ISO creation timestamp from Shopify (products.json `created_at`). */
+  createdAt?: string;
 }
 
 /** Shape mirrors Storefront API Collection (trimmed). */
@@ -162,6 +164,7 @@ interface RestProduct {
   handle: string;
   vendor: string;
   body_html: string;
+  created_at?: string;
   images: RestImage[];
   variants: RestVariant[];
   options: { name: string; values: string[] }[];
@@ -216,6 +219,7 @@ export function normalizeProduct(p: RestProduct): Product {
     price: minPrice.price,
     compareAtPrice: minPrice.compareAtPrice,
     availableForSale: anyAvailable,
+    createdAt: p.created_at,
   };
 }
 
