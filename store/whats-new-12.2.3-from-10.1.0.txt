@@ -1,0 +1,13 @@
+## What's new in this version
+Our biggest update yet — everything below is new since the last release.
+
+- A FULL redesign: a clean new black & white look built around the Fam, with a new home screen (newest drops, fam favorites, quick tiles), a faster shop with search up top, and a brand-new profile with your Fam member card
+- Order History: orders you place show up instantly, and you can sign in with your email to see every order with live tracking and full details
+- Need to cancel? Request a cancellation right from your order, before it ships
+- Pay right in the app: check out without leaving BeaTrackFam — cards and Apple Pay, with your totals shown before you pay
+- Promo codes that really work: add up to 2 at checkout and watch the discount, shipping, and tax update live
+- Meet Bea: our in-app help assistant for tracking orders, finding products, and answers on shipping, returns, and promo codes — and if you need a human, Bea connects you to us on chat and knows our business hours
+- Inbox: your order updates and newest drops in one place
+- Faster checkout details: address autofill and saved addresses
+
+Questions or concerns? Email us at contact@beatrackfam.info

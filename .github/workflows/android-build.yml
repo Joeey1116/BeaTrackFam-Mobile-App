@@ -12,6 +12,11 @@ name: Build Android AAB
 
 on:
   workflow_dispatch:
+    inputs:
+      upload_to_play:
+        description: "Upload the AAB to Google Play (internal track, draft) after building"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -125,6 +130,21 @@ jobs:
           name: ${{ steps.ver.outputs.artifact_name }}
           path: ${{ steps.ver.outputs.aab_file }}
           retention-days: 30
+
+      # Play upload mirrors the iOS TestFlight lane, but only when the
+      # run asks for it (input above): internal track, draft status, so
+      # nothing reaches the public listing without Joey's Play Console
+      # click. Needs PLAY_SERVICE_ACCOUNT_JSON (the Play service-account
+      # key, stored as a GitHub secret — never in the repo).
+      - name: Upload the AAB to Google Play (internal, draft)
+        if: ${{ inputs.upload_to_play }}
+        uses: r0adkll/upload-google-play@v1.2.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.beatrackfaminc
+          releaseFiles: ${{ steps.ver.outputs.aab_file }}
+          track: internal
+          status: draft
 
       - name: Remove the keystore
         if: always()
