@@ -23,7 +23,8 @@
  */
 
 /** Stripe PUBLISHABLE key (pk_live_… or pk_test_…). Safe to ship in-app. */
-export const STRIPE_PUBLISHABLE_KEY = "";
+export const STRIPE_PUBLISHABLE_KEY =
+  "pk_live_51SnaQ5Q3FeSPQRlUNFJdLAk3eJIvXrfI8bgZMyqy5igTzec83oIutk4Zb1JW4VrK855divpbDQHV4L1Tn2luttSd00zOfk0l4jEY";
 
 /** Apple Merchant ID for Apple Pay (created in the Apple Developer portal). */
 export const APPLE_MERCHANT_ID = "merchant.com.beatrackfaminc";

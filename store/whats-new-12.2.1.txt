@@ -1,0 +1,5 @@
+## What's new in this version
+- NEW: Pay right in the app — cards, Apple Pay, Google Pay, and Klarna/Affirm where eligible. No more leaving the app to check out
+- Promo codes work in-app exactly like on the website
+- If a payment is declined, the app tells you why — and no order is created
+Questions or concerns? Email us at contact@beatrackfam.info
