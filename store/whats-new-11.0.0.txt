@@ -1,0 +1,6 @@
+## What's new in this version
+- Order History is here: orders you place show up instantly, and you can sign in with your email to see every order with live tracking
+- Full order details in the app — items, totals, shipping status, and tracking links when your package is on its way
+- Need to cancel? Request a cancellation right from your order (before it ships)
+- Performance improvements and stability fixes under the hood
+Questions or concerns? Email us at contact@beatrackfam.info
