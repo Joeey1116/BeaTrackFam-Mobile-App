@@ -42,7 +42,8 @@ export const CHECKOUT_WORKER_URL =
  * Fill these two in to arm test mode; until then the switch explains
  * that test checkout isn't configured yet.
  */
-export const STRIPE_TEST_PUBLISHABLE_KEY = "";
+export const STRIPE_TEST_PUBLISHABLE_KEY =
+  "pk_test_51SnaQ5Q3FeSPQRlUgNOCq3qnsyosThKLTjoXxHu5S6KO5RoLcl5D3fzdx9pG2rI1NmM7DIACOJ6Bdv6Ui4DXZHCq00OKkpmjkX";
 
 export const TEST_CHECKOUT_WORKER_URL =
   "https://beatrackfam-checkout-test.contact-beatrackfam.workers.dev";
