@@ -24,7 +24,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "./ThemeProvider";
 import { OutlineButton, PrimaryButton, ScreenHeader, TextField } from "./ui";
 import { useShop } from "../store/shop";
-import { Spacing } from "../constants/theme";
+import { Radius, Spacing } from "../constants/theme";
 import { isResetAvailable } from "../lib/passwordReset";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -33,12 +33,14 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
   const { colors } = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ email?: string }>();
-  const { signIn, signUp, signOut, continueAsGuest } = useShop();
+  const { signIn, signUp, signOut, continueAsGuest, signInWithShopify } =
+    useShop();
   const [name, setName] = useState("");
   const [email, setEmail] = useState(params.email ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [shopifyBusy, setShopifyBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
 
@@ -92,6 +94,21 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
     }
   };
 
+  const onShopify = async () => {
+    setError(null);
+    setShopifyBusy(true);
+    try {
+      const result = await signInWithShopify();
+      if (result.ok) {
+        router.replace("/(tabs)");
+      } else {
+        setError(result.reason);
+      }
+    } finally {
+      setShopifyBusy(false);
+    }
+  };
+
   const onGuest = async () => {
     await continueAsGuest();
     // Go back to wherever the shopper came from instead of pushing forward.
@@ -117,6 +134,51 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
           Your account is registered with BeaTrackFam, so you can log
           back in on any phone — even after reinstalling the app.
         </Text>
+
+        <View
+          style={[
+            styles.banner,
+            {
+              backgroundColor: colors.text + "0D",
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Ionicons name="shield-checkmark-outline" size={22} color={colors.text} />
+          <View style={styles.bannerMain}>
+            <Text style={[styles.bannerTitle, { color: colors.text }]}>
+              We highly recommend using an account
+            </Text>
+            <Text style={[styles.bannerText, { color: colors.textMuted }]}>
+              Check out faster, keep your addresses saved, and see every
+              order with live tracking — all in one place.
+            </Text>
+          </View>
+        </View>
+
+        {shopifyBusy ? (
+          <View style={[styles.busy, { backgroundColor: colors.button }]}>
+            <ActivityIndicator color={colors.buttonText} />
+          </View>
+        ) : (
+          <OutlineButton
+            label="Continue with Shopify"
+            onPress={onShopify}
+          />
+        )}
+        <Text style={[styles.shopifyNote, { color: colors.textDim }]}>
+          Uses the email from your Shopify orders — no separate password
+          to remember. Whether you continue with Shopify or sign up with
+          email below, it&apos;s the same BeaTrackFam account: your
+          profile, addresses, and orders stay together by email.
+        </Text>
+        <View style={styles.dividerRow}>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <Text style={[styles.dividerText, { color: colors.textDim }]}>
+            or with email
+          </Text>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        </View>
 
         {isSignup && (
           <TextField
@@ -281,4 +343,30 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: Spacing.lg,
   },
+  banner: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    alignItems: "flex-start",
+  },
+  bannerMain: { flex: 1, gap: 2 },
+  bannerTitle: { fontSize: 14, fontWeight: "800" },
+  bannerText: { fontSize: 13, lineHeight: 18 },
+  shopifyNote: {
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: "center",
+    marginTop: Spacing.sm,
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginVertical: Spacing.md,
+  },
+  divider: { flex: 1, height: 1 },
+  dividerText: { fontSize: 12, fontWeight: "600" },
 });

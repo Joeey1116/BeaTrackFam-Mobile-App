@@ -1,0 +1,11 @@
+## What's new in this version
+- Order History is here: orders you place show up instantly, and you can sign in with your email to see every order with live tracking
+- Full order details in the app — items, totals, shipping status, and tracking links when your package is on its way
+- Need to cancel? Request a cancellation right from your order (before it ships)
+- Promo codes at checkout — add up to 2 and they sync straight to your order
+- Fixed sign-in profile loading and checkout with older cart items
+- Order History shows which email you're signed in with, your real order statuses (including cancelled), and a sign-out button
+- Items that are only on our website now say so right on their page, so checkout never hits a dead end
+- Signing out now fully signs you out — sign back in with any email
+- Continue with Shopify on the log-in and sign-up screens — same account either way, with a guest order lookup by order number + email
+Questions or concerns? Email us at contact@beatrackfam.info

@@ -132,18 +132,39 @@ export default function Checkout() {
     setPromoInput("");
   };
 
-  // Pre-fill from the signed-in account + default saved address.
+  // Saved-address picker: "Use my saved address" fills the form and
+  // shows which address is in use; with several saved, it opens a
+  // dropdown so the shopper picks their preferred one.
+  const [savedMenuOpen, setSavedMenuOpen] = useState(false);
+  const [appliedAddrId, setAppliedAddrId] = useState<string | null>(
+    initialAddress?.id ?? null
+  );
+  const appliedAddr =
+    profile.addresses.find((a) => a.id === appliedAddrId) ?? null;
 
-  const fillFromSavedAddress = () => {
-    const def =
-      profile.addresses.find((a) => a.isDefault) ?? profile.addresses[0];
-    if (!def) return;
-    setAddress1(def.street);
-    setAddress2(def.street2);
-    setCity(def.city);
-    setProvince(def.province);
-    setZip(def.zip);
-    if (def.phone) setPhone(def.phone);
+  const applyAddress = (addr: (typeof profile.addresses)[number]) => {
+    const parts = addr.name.split(" ").filter(Boolean);
+    if (parts.length > 0) {
+      setFirstName(parts[0]);
+      setLastName(parts.slice(1).join(" "));
+    }
+    setAddress1(addr.street);
+    setAddress2(addr.street2);
+    setCity(addr.city);
+    setProvince(addr.province);
+    setZip(addr.zip);
+    setCountry(addr.country || "US");
+    if (addr.phone) setPhone(addr.phone);
+    setAppliedAddrId(addr.id);
+    setSavedMenuOpen(false);
+  };
+
+  const onSavedAddressPress = () => {
+    if (profile.addresses.length === 1) {
+      applyAddress(profile.addresses[0]);
+    } else {
+      setSavedMenuOpen((open) => !open);
+    }
   };
 
   const validate = (): string | null => {
@@ -323,15 +344,91 @@ export default function Checkout() {
         </Text>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
           {profile.addresses.length > 0 && (
-            <Pressable
-              style={[styles.savedAddrBtn, { borderColor: colors.border }]}
-              onPress={fillFromSavedAddress}
-            >
-              <Ionicons name="home-outline" size={18} color={colors.text} />
-              <Text style={[styles.savedAddrLabel, { color: colors.text }]}>
-                Use my saved address
-              </Text>
-            </Pressable>
+            <>
+              <Pressable
+                style={[
+                  styles.savedAddrBtn,
+                  {
+                    borderColor: appliedAddr ? colors.text : colors.border,
+                    backgroundColor: appliedAddr
+                      ? colors.surfaceRaised
+                      : "transparent",
+                  },
+                ]}
+                onPress={onSavedAddressPress}
+              >
+                <Ionicons
+                  name={appliedAddr ? "checkmark-circle" : "home-outline"}
+                  size={18}
+                  color={colors.text}
+                />
+                <Text
+                  style={[
+                    styles.savedAddrLabel,
+                    { color: colors.text, flex: 1 },
+                  ]}
+                >
+                  {appliedAddr
+                    ? `Using: ${appliedAddr.label}`
+                    : "Use my saved address"}
+                </Text>
+                {profile.addresses.length > 1 && (
+                  <Ionicons
+                    name={savedMenuOpen ? "chevron-up" : "chevron-down"}
+                    size={16}
+                    color={colors.textMuted}
+                  />
+                )}
+              </Pressable>
+              {savedMenuOpen &&
+                profile.addresses.map((addr) => {
+                  const selected = addr.id === appliedAddrId;
+                  return (
+                    <Pressable
+                      key={addr.id}
+                      onPress={() => applyAddress(addr)}
+                      style={[
+                        styles.savedAddrOption,
+                        {
+                          borderColor: selected
+                            ? colors.text
+                            : colors.border,
+                          backgroundColor: selected
+                            ? colors.surfaceRaised
+                            : "transparent",
+                        },
+                      ]}
+                    >
+                      <View style={styles.savedAddrMain}>
+                        <Text
+                          style={[
+                            styles.savedAddrOptionLabel,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {addr.label}
+                          {addr.isDefault ? " · Default" : ""}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.savedAddrOptionSub,
+                            { color: colors.textMuted },
+                          ]}
+                        >
+                          {addr.name} — {addr.street}, {addr.city}
+                        </Text>
+                      </View>
+                      {selected && (
+                        <Ionicons
+                          name="checkmark"
+                          size={18}
+                          color={colors.text}
+                        />
+                      )}
+                    </Pressable>
+                  );
+                })}
+            </>
           )}
           <TextField
             label="Email"
@@ -592,6 +689,18 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   savedAddrLabel: { fontSize: 14, fontWeight: "600" },
+  savedAddrOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  savedAddrMain: { flex: 1, gap: 2 },
+  savedAddrOptionLabel: { fontSize: 14, fontWeight: "700" },
+  savedAddrOptionSub: { fontSize: 12 },
   row: { flexDirection: "row", gap: Spacing.sm },
   half: { flex: 1 },
   quarter: { flex: 0.7 },

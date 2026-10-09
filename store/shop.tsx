@@ -35,6 +35,7 @@ import {
   clearLocalProfile,
   getLocalProfile,
   saveLocalProfile,
+  startLogin as startShopifyLogin,
   type LocalAddress,
   type LocalProfile,
   type SocialHandles,
@@ -48,9 +49,12 @@ import {
   getCurrentAccount,
   saveAccount,
   signIn as signInToAccount,
+  signInWithShopifyCustomer,
+  linkShopifyOrderToCurrentAccount,
   signOutAccount,
   type AccountResult,
   type AppAccount,
+  type LinkedShopifyOrder,
   type OrderReceipt,
 } from "../lib/accounts";
 import {
@@ -96,6 +100,9 @@ interface ShopContextValue {
     password: string
   ) => Promise<AccountResult>;
   signIn: (email: string, password: string) => Promise<AccountResult>;
+  /** Continue with Shopify → the same one app account, linked by email. */
+  signInWithShopify: () => Promise<AccountResult>;
+  linkShopifyOrder: (order: LinkedShopifyOrder) => Promise<void>;
   signOut: () => Promise<void>;
   continueAsGuest: () => Promise<void>;
   changePassword: (
@@ -210,6 +217,35 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         void markOnboardingDone();
       }
       return result;
+    },
+    []
+  );
+
+  /** Continue with Shopify: OAuth in the in-app browser (Shopify's own
+   * page — same flow as Order History), then link or create the one
+   * app account for that email, so both sign-in paths land in the same
+   * account and its orders. startLogin also persisted the Shopify
+   * session, so Order History is live immediately. */
+  const signInWithShopify = useCallback(async (): Promise<AccountResult> => {
+    const login = await startShopifyLogin();
+    if (!login.ok) return { ok: false, reason: login.reason };
+    const seed = await getLocalProfile();
+    const result = await signInWithShopifyCustomer({
+      customer: login.session.customer,
+      seedProfile: seed,
+    });
+    if (result.ok) {
+      setAccount(result.account);
+      setOnboardingDone(true);
+      void markOnboardingDone();
+    }
+    return result;
+  }, []);
+
+  const linkShopifyOrder = useCallback(
+    async (order: LinkedShopifyOrder): Promise<void> => {
+      const next = await linkShopifyOrderToCurrentAccount(order);
+      if (next) setAccount(next);
     },
     []
   );
@@ -537,6 +573,8 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       isGuest: !account,
       signUp,
       signIn,
+      signInWithShopify,
+      linkShopifyOrder,
       signOut,
       continueAsGuest,
       changePassword,
@@ -577,6 +615,8 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     onboardingDone,
     signUp,
     signIn,
+    signInWithShopify,
+    linkShopifyOrder,
     signOut,
     continueAsGuest,
     changePassword,

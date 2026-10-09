@@ -80,11 +80,33 @@ export interface AppAccount {
   createdAt: string;
   profile: LocalProfile;
   orders: OrderReceipt[];
+  /**
+   * How this account signs in. "shopify" accounts were created through
+   * Continue with Shopify — they have no usable password (the stored
+   * hash is of a random throwaway value). Undefined = "password"
+   * (every pre-11.0.12 account).
+   */
+  authProvider?: "password" | "shopify";
+  /** Shopify Customer Account API customer id, once linked. */
+  shopifyCustomerId?: string;
+  /** Shopify orders bookmarked onto this account from Order History. */
+  linkedShopifyOrders?: LinkedShopifyOrder[];
 }
 
 export type AccountResult =
   | { ok: true; account: AppAccount }
   | { ok: false; reason: string };
+
+/** A Shopify order snapshot linked to this app account from Order History. */
+export interface LinkedShopifyOrder {
+  id: string;
+  name: string;
+  processedAt: string;
+  totalAmount: string;
+  currencyCode: string;
+  status: string;
+  email: string;
+}
 
 /* --------------------------------- Hashing --------------------------------- */
 
@@ -169,7 +191,10 @@ export async function createAccount(input: {
   if (accounts[email]) {
     return {
       ok: false,
-      reason: "An account with this email already exists on this device.",
+      reason:
+        accounts[email].authProvider === "shopify"
+          ? "This email already has an account through Shopify — use Continue with Shopify to log in."
+          : "An account with this email already exists on this device.",
     };
   }
 
@@ -278,7 +303,13 @@ export async function signIn(input: {
   }
   const attempt = await hashPassword(input.password, account.salt);
   if (attempt !== account.passwordHash) {
-    return { ok: false, reason: "Incorrect password. Please try again." };
+    return {
+      ok: false,
+      reason:
+        account.authProvider === "shopify"
+          ? "This account uses Continue with Shopify — tap that button above to sign in."
+          : "Incorrect password. Please try again.",
+    };
   }
   await AsyncStorage.setItem(SESSION_KEY, account.id).catch(() => {});
   // Accounts born before the registry register themselves here, so
@@ -300,6 +331,99 @@ export async function signIn(input: {
     })();
   }
   return { ok: true, account: sanitizeAccount(account) };
+}
+
+/**
+ * Continues with a verified Shopify identity (lib/customer.startLogin
+ * already completed OAuth and persisted the Shopify session). One
+ * account either way: an existing account with this email is linked
+ * (shopifyCustomerId set, profile gaps filled from Shopify); otherwise
+ * a Shopify-backed account is created with an unusable random
+ * password. Shopify accounts are not registered with the accounts
+ * worker — there is no password to register; Shopify is their login.
+ */
+export async function signInWithShopifyCustomer(input: {
+  customer: {
+    id: string;
+    email?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  };
+  seedProfile?: LocalProfile;
+}): Promise<AccountResult> {
+  const email = normalizeEmail(input.customer.email ?? "");
+  if (!EMAIL_RE.test(email)) {
+    return {
+      ok: false,
+      reason: "Shopify didn't return an email address for that account.",
+    };
+  }
+  const accounts = await readAccounts();
+  const existing = accounts[email];
+  if (existing) {
+    const linked: AppAccount = {
+      ...existing,
+      shopifyCustomerId: input.customer.id,
+      profile: {
+        ...existing.profile,
+        firstName: existing.profile.firstName || input.customer.firstName || "",
+        lastName: existing.profile.lastName || input.customer.lastName || "",
+      },
+    };
+    accounts[email] = linked;
+    await writeAccounts(accounts);
+    await AsyncStorage.setItem(SESSION_KEY, linked.id).catch(() => {});
+    return { ok: true, account: sanitizeAccount(linked) };
+  }
+
+  const saltBytes = await Crypto.getRandomBytesAsync(16);
+  const salt = bytesToHex(saltBytes);
+  // Random unusable password: nobody can log into this account with a
+  // password; Continue with Shopify is the way in.
+  const throwaway = bytesToHex(await Crypto.getRandomBytesAsync(24));
+  const profile: LocalProfile = {
+    ...EMPTY_PROFILE,
+    ...(input.seedProfile ?? {}),
+    firstName: input.customer.firstName ?? input.seedProfile?.firstName ?? "",
+    lastName: input.customer.lastName ?? input.seedProfile?.lastName ?? "",
+  };
+  const account: AppAccount = {
+    id: `acct-${Date.now()}`,
+    email,
+    passwordHash: await hashPassword(throwaway, salt),
+    salt,
+    createdAt: new Date().toISOString(),
+    profile,
+    orders: [],
+    authProvider: "shopify",
+    shopifyCustomerId: input.customer.id,
+  };
+  accounts[email] = account;
+  await writeAccounts(accounts);
+  await AsyncStorage.setItem(SESSION_KEY, account.id).catch(() => {});
+  return { ok: true, account: sanitizeAccount(account) };
+}
+
+/**
+ * Saves a Shopify order snapshot onto the currently signed-in app
+ * account ("Link to my account" in Order History). Dedupes by order
+ * id; re-linking refreshes the snapshot. Returns the updated account,
+ * or null when nobody is signed into the app.
+ */
+export async function linkShopifyOrderToCurrentAccount(
+  order: LinkedShopifyOrder
+): Promise<AppAccount | null> {
+  const account = await getCurrentAccount();
+  if (!account) return null;
+  const rest = (account.linkedShopifyOrders ?? []).filter(
+    (o) => o.id !== order.id
+  );
+  const next: AppAccount = {
+    ...account,
+    linkedShopifyOrders: [order, ...rest].slice(0, 100),
+  };
+  await saveAccount(next);
+  return next;
 }
 
 /** The currently signed-in account, or null (guest). */

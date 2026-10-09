@@ -1,15 +1,21 @@
 /**
- * Shopify Customer Account API seam — DEPRECATED FOR SIGN-IN (Oct 2026).
+ * Shopify Customer Account API seam.
  *
- * The Customer Account API's OAuth + profile fetch kept failing on real
- * devices ("Couldn't load your profile from Shopify"), which blocked
- * sign-in entirely. Sign-in now uses device-local app accounts
- * (lib/accounts.ts) and NEVER calls startLogin()/fetchCustomer().
+ * History: the OAuth + profile fetch failed on real devices in early
+ * Oct 2026 ("Couldn't load your profile from Shopify"), so app sign-in
+ * moved to device-local app accounts (lib/accounts.ts). The OAuth flow
+ * turned out to be broken by stale GraphQL field names, not auth —
+ * fixed 11.0.7 and verified end-to-end on device Oct 9 2026 (sign-in,
+ * order history, sign-out, account switching all confirmed by Joey).
+ * Since 11.0.12 the login/signup screens ALSO offer Continue with
+ * Shopify (Joey's call): startLogin() here, then
+ * signInWithShopifyCustomer() in lib/accounts.ts links or creates the
+ * one app account for that email, and this module's persisted session
+ * powers Order History.
  *
- * This module is kept for the LOCAL PROFILE types + storage below
- * (LocalProfile, LocalAddress, getLocalProfile, saveLocalProfile), which
- * the account system builds on. Do not reintroduce the OAuth flow into
- * the login/signup UI without a verified end-to-end device test.
+ * This module also holds the LOCAL PROFILE types + storage below
+ * (LocalProfile, LocalAddress, getLocalProfile, saveLocalProfile),
+ * which the account system builds on.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
@@ -169,7 +175,7 @@ function resolveRedirectUri(): string {
  * authorize (PKCE) → browser session → token exchange → customer GraphQL.
  * Never throws — failures return `{ ok: false, reason }`.
  */
-export async function startLogin(): Promise<LoginResult> {
+export async function startLogin(loginHint?: string): Promise<LoginResult> {
   if (!isCustomerApiConfigured()) {
     return {
       ok: false,
@@ -195,6 +201,12 @@ export async function startLogin(): Promise<LoginResult> {
       // in 11.0.10 and Shopify ignored it). Switching emails works
       // because Sign out ends the server session (see clearSession);
       // with no session left, this flow lands on the email form.
+      // login_hint (documented) prefills the email field when the form
+      // does show — Order History's order lookup passes the email the
+      // user is looking orders up for.
+      ...(loginHint
+        ? { extraParams: { login_hint: loginHint.trim() } }
+        : {}),
     });
     const discovery = {
       authorizationEndpoint: authorizeEndpoint(),
