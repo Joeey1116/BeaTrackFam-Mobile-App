@@ -206,7 +206,7 @@ export default function AppSettings() {
         <SettingRow
           icon={icon("information-circle-outline")}
           title="Version"
-          subtitle="12.2.2 (Build 1204)"
+          subtitle="12.2.3 (Build 1205)"
         />
         <SettingRow
           icon={icon("phone-portrait-outline")}

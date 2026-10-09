@@ -1,0 +1,7 @@
+- In-app checkout promo codes now check against your real Shopify codes as you type - valid codes show your discount, shipping, and tax before you pay
+- Payment is faster: the payment sheet gets ready in the background while you fill in your details
+- Ask Bea now connects you to a human through Shopify chat - and knows our business hours, so you'll always know if we're online or when we'll be back
+- Your member card now counts all your orders, including cancelled ones - no more 0 orders when you have order history
+- Pull down to refresh on Home, Shop, Wishlist, Profile, Order History, Inbox, and product pages
+- Fixed a double search bar on the Shop screen
+- Fixed an invalid payment key error some testers saw at checkout
