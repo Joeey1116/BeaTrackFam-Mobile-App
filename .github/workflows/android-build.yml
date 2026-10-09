@@ -148,6 +148,7 @@ jobs:
           releaseFiles: ${{ steps.ver.outputs.aab_file }}
           track: production
           status: completed
+          whatsNewDirectory: play-whatsnew
 
       - name: Remove the keystore
         if: always()
