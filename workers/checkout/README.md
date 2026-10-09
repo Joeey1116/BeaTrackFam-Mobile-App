@@ -19,30 +19,41 @@ Deploy drill (~15 minutes total, same as the other workers):
 4. **Settings → Variables and Secrets**:
    - Variable `SHOPIFY_SHOP_DOMAIN` = your `….myshopify.com` domain
      (Shopify admin → Settings → Store details).
+   - Variable `SHOPIFY_CLIENT_ID` = from step 2 below.
    - Secret `APP_SECRET` = the same shared worker secret (in
      `lib/resetConfig.ts`; never type it in chat).
    - Secret `SHOPIFY_STOREFRONT_TOKEN` = the token in `lib/storefront.ts`.
-   - Secret `SHOPIFY_ADMIN_TOKEN` = from step 2 below.
-   - Secret `STRIPE_SECRET_KEY` = from step 3 below (sk_test_ first!).
+   - Secret `SHOPIFY_CLIENT_SECRET` = from step 2 below.
+   - Secret `STRIPE_SECRET_KEY` = from step 3 below (sk_live_ — straight
+     to live, no test mode).
    - Secret `STRIPE_WEBHOOK_SECRET` = from step 4 below.
 5. Check: open `https://beatrackfam-checkout.contact-beatrackfam.workers.dev/health`
    — every `configured` flag should be `true`.
 
-## 2. Shopify custom app (Admin API token)
-1. Shopify admin → **Settings → Apps and sales channels → Develop apps**
-   → **Create an app** → name: `BeaTrackFam App Checkout`.
+## 2. Shopify app (Dev Dashboard — Admin API access)
+Use the **Dev Dashboard** route (leave the **Headless** app alone — it
+powers the app's product feed / sales channel).
+1. Shopify admin → **Settings → Apps and sales channels → Build apps**
+   (opens the Dev Dashboard) → **Create app** → name:
+   `BeaTrackFam App Checkout`.
 2. **Configuration → Admin API integration** → check `write_orders`
-   (and `read_orders`) → Save.
-3. **Install app** → **API credentials** → reveal the Admin API access
-   token (`shpat_…`) → that's `SHOPIFY_ADMIN_TOKEN` above.
-   This token lives ONLY in the worker secret — never in the app.
+   and `read_orders` → Save → create/release the version.
+3. **Install** the app on your store.
+4. **Settings → API credentials**: copy the **Client ID** (→ Cloudflare
+   variable `SHOPIFY_CLIENT_ID`) and the **Client secret** (→ Cloudflare
+   secret `SHOPIFY_CLIENT_SECRET`). The worker exchanges these for
+   short-lived Admin tokens automatically and caches them in KV.
+   (Legacy alternative: an admin custom app's `shpat_…` token can be set
+   as `SHOPIFY_ADMIN_TOKEN` instead — the worker prefers it when present.)
+   These credentials live ONLY in the worker — never in the app.
 
 ## 3. Stripe
 1. Create the account at stripe.com (business: BeaTrackFam; have EIN +
    bank details ready). No cost until real sales come in.
-2. **Developers → API keys** → copy the **Publishable key** (`pk_test_`
-   first) into `lib/checkoutConfig.ts` in the app, and the **Secret
-   key** (`sk_test_…`) into the worker as `STRIPE_SECRET_KEY`.
+2. **Developers → API keys** (LIVE mode — no test mode): send Gabi the
+   **Publishable key** (`pk_live_…`, public by design — it goes in
+   `lib/checkoutConfig.ts`), and put the **Secret key** (`sk_live_…`)
+   into the worker as `STRIPE_SECRET_KEY` (never in chat).
 3. In **Settings → Payments**, turn ON the methods you want: cards are
    on by default; enable Apple Pay / Google Pay domains are handled by
    the app SDK; Affirm / Afterpay / Klarna can be toggled here.
@@ -59,18 +70,16 @@ Deploy drill (~15 minutes total, same as the other workers):
    Processing** → link the merchant ID.
 3. Next iOS build picks it up automatically (signing syncs it).
 
-## 5. Ship + test
+## 5. Ship + verify (live, per Joey — no test mode)
 1. Gabi cuts a release with the publishable key in place → build it.
-2. Place a TEST order in the app with Stripe's test card
-   `4242 4242 4242 4242`, any future date + CVC. Also try the decline
-   card `4000 0000 0000 0002` — the app must show Stripe's error and
-   create NO order.
+2. Place one small REAL order on yourself in the app (cheapest item,
+   real card). The payment should succeed in-app with no redirect.
 3. Confirm in Shopify admin: a paid order tagged `app-checkout` with
    the Stripe payment id in the note, totals matching, and Printify
-   receiving it. (Cancel/refund that test order in admin after.)
-4. When it all checks out: swap `sk_test_`/`pk_test_` for the live
-   keys (Stripe → activate account first), redeploy the worker secret
-   + ship a build with the live publishable key.
+   receiving it.
+4. Refund that order in Stripe + cancel it in Shopify admin right
+   away (before Printify starts production). That's the full
+   end-to-end proof — checkout is live.
 
 ## Limits (by design)
 - Shop Pay can't run outside Shopify's own checkout — it stays

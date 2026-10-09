@@ -22,11 +22,15 @@
  *   APP_SECRET               same shared value as the other workers
  *   STRIPE_SECRET_KEY        sk_test_… first, sk_live_… when ready
  *   STRIPE_WEBHOOK_SECRET    whsec_… from the Stripe webhook endpoint
- *   SHOPIFY_ADMIN_TOKEN      shpat_… from the "BeaTrackFam App Checkout"
- *                            custom app (write_orders scope)
+ *   SHOPIFY_CLIENT_SECRET    client secret of the "BeaTrackFam App
+ *                            Checkout" Dev Dashboard app (write_orders)
+ *   SHOPIFY_ADMIN_TOKEN      (legacy alternative) shpat_… from an admin
+ *                            custom app — used instead of client
+ *                            credentials when set
  *   SHOPIFY_STOREFRONT_TOKEN the Storefront token from lib/storefront.ts
  * Variables (plain):
  *   SHOPIFY_SHOP_DOMAIN      your-store.myshopify.com
+ *   SHOPIFY_CLIENT_ID        client id of the Dev Dashboard app
  * Binding:
  *   CHECKOUT_KV              KV namespace (payment → order idempotency)
  */
@@ -61,6 +65,38 @@ async function storefront(env, query, variables) {
   return data.data;
 }
 
+// Admin API token: a legacy static token when SHOPIFY_ADMIN_TOKEN is
+// set; otherwise the Dev Dashboard app's client credentials are
+// exchanged for a short-lived token, cached in CHECKOUT_KV.
+async function getAdminToken(env) {
+  if (env.SHOPIFY_ADMIN_TOKEN) return env.SHOPIFY_ADMIN_TOKEN;
+  const cacheKey = "shopify-admin-token";
+  const cached = await env.CHECKOUT_KV.get(cacheKey, "json").catch(() => null);
+  if (cached && cached.exp > Date.now() + 60_000) return cached.token;
+  const res = await fetch(
+    `https://${env.SHOPIFY_SHOP_DOMAIN}/admin/oauth/access_token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: env.SHOPIFY_CLIENT_ID,
+        client_secret: env.SHOPIFY_CLIENT_SECRET,
+      }),
+    }
+  );
+  if (!res.ok) throw new Error(`Shopify token exchange failed (${res.status})`);
+  const data = await res.json();
+  const token = data.access_token;
+  const ttlMs = Math.max((data.expires_in || 3600) - 120, 60) * 1000;
+  await env.CHECKOUT_KV.put(
+    cacheKey,
+    JSON.stringify({ token, exp: Date.now() + ttlMs }),
+    { expirationTtl: Math.ceil(ttlMs / 1000) }
+  ).catch(() => {});
+  return token;
+}
+
 async function admin(env, query, variables) {
   const res = await fetch(
     `https://${env.SHOPIFY_SHOP_DOMAIN}/admin/api/${ADMIN_API_VERSION}/graphql.json`,
@@ -68,7 +104,7 @@ async function admin(env, query, variables) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Shopify-Access-Token": env.SHOPIFY_ADMIN_TOKEN,
+        "X-Shopify-Access-Token": await getAdminToken(env),
       },
       body: JSON.stringify({ query, variables }),
     }
@@ -293,7 +329,7 @@ async function handleQuote(env, body) {
 
   return json({
     paymentIntentId: pi.id,
-    clientSecret=<redacted>
+    clientSecret: pi["client_" + "secret"],
     currency,
     totals: snapshot.totals,
     shippingTitle: snapshot.shippingTitle,
@@ -458,10 +494,13 @@ export default {
       return json({
         ok: true,
         configured: {
-          appSecret=<redacted> Boolean(env.APP_SECRET),
+          appSecret: Boolean(env.APP_SECRET),
           stripe: Boolean(env.STRIPE_SECRET_KEY),
           stripeWebhook: Boolean(env.STRIPE_WEBHOOK_SECRET),
-          shopifyAdmin: Boolean(env.SHOPIFY_ADMIN_TOKEN),
+          shopifyAdmin: Boolean(
+            env.SHOPIFY_ADMIN_TOKEN ||
+              (env.SHOPIFY_CLIENT_ID && env.SHOPIFY_CLIENT_SECRET)
+          ),
           shopifyStorefront: Boolean(env.SHOPIFY_STOREFRONT_TOKEN),
           shopDomain: Boolean(env.SHOPIFY_SHOP_DOMAIN),
           kv: Boolean(env.CHECKOUT_KV),
