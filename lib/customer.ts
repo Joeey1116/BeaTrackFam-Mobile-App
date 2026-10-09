@@ -123,8 +123,32 @@ function tokenEndpoint(): string {
   return `https://shopify.com/authentication/${CUSTOMER_API_CONFIG.shopId}/oauth/token`;
 }
 
-function graphqlEndpoint(): string {
-  return `https://shopify.com/${CUSTOMER_API_CONFIG.shopId}/account/customer/api/2026-01/graphql`;
+function fallbackGraphqlEndpoint(): string {
+  return `https://shopify.com/${CUSTOMER_API_CONFIG.shopId}/account/customer/api/2026-10/graphql`;
+}
+
+// Discover the Customer Account API GraphQL endpoint at runtime (Shopify's
+// requirement — never hardcode it). Cached for the app's lifetime; falls
+// back to a current known endpoint if discovery is unreachable.
+let discoveredEndpointPromise: Promise<string> | null = null;
+function graphqlEndpoint(): Promise<string> {
+  if (!discoveredEndpointPromise) {
+    discoveredEndpointPromise = (async () => {
+      try {
+        const res = await fetch(
+          `https://rp4j61-zf.myshopify.com/.well-known/customer-account-api`,
+          { headers: { "user-agent": "BeaTrackFam-App" } }
+        );
+        const json = (await res.json()) as { graphql_api?: string };
+        return json.graphql_api?.trim()
+          ? json.graphql_api.trim()
+          : fallbackGraphqlEndpoint();
+      } catch {
+        return fallbackGraphqlEndpoint();
+      }
+    })();
+  }
+  return discoveredEndpointPromise;
 }
 
 function resolveRedirectUri(): string {
@@ -268,7 +292,7 @@ async function customerApiFetch(
   for (const form of authForms) {
     for (const origin of origins) {
       try {
-        const res = await fetch(graphqlEndpoint(), {
+        const res = await fetch(await graphqlEndpoint(), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -341,22 +365,33 @@ export async function fetchCustomer(
     const res = await customerApiFetch(accessToken, {
       query: CUSTOMER_QUERY,
     });
-    if (!res || !res.ok) {
+    if (!res) {
       return {
         ok: false,
-        reason: res
-          ? `Couldn't load your profile from Shopify (error ${res.status}).`
-          : "Couldn't reach Shopify — check your connection and try again.",
+        reason: "Couldn't reach Shopify — check your connection and try again.",
       };
     }
-    const json = (await res.json()) as {
+    const json = (await res
+      .json()
+      .catch(() => null)) as {
       data?: { customer?: any };
       errors?: { message: string }[];
-    };
-    if (json.errors?.length) {
+    } | null;
+    if (!res.ok) {
+      // Shopify explains most failures in the errors[] body even on 4xx —
+      // surface that sentence instead of a bare status code.
+      if (json?.errors?.length) {
+        return { ok: false, reason: json.errors[0].message };
+      }
+      return {
+        ok: false,
+        reason: `Couldn't load your profile from Shopify (error ${res.status}).`,
+      };
+    }
+    if (json?.errors?.length) {
       return { ok: false, reason: json.errors[0].message };
     }
-    const c = json.data?.customer;
+    const c = json?.data?.customer;
     if (!c) {
       return { ok: false, reason: "No customer found for this sign-in." };
     }
