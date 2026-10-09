@@ -15,7 +15,7 @@
 export const RESET_WORKER_URL = "https://beatrackfam-password-reset.contact-beatrackfam.workers.dev";
 
 export const RESET_APP_SECRET =
-  "64c3b8d5f0489d98f890976b38afb14269fa9f3248001293";
+  "e8bd0656fafe2bd04ebf7eddc9992259989f32418f86bd48";
 
 /** True once Joey has deployed the worker and pasted its URL above. */
 export const isPasswordResetConfigured = () =>

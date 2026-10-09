@@ -36,7 +36,7 @@
         "NSLocationWhenInUseUsageDescription": "BeaTrackFam uses your location to personalize delivery options and show relevant availability.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "1205"
+      "buildNumber": "1206"
     },
     "name": "BeaTrackFam",
     "orientation": "default",
