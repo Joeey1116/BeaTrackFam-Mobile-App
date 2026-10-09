@@ -34,7 +34,6 @@ import type { OrderReceipt } from "../../lib/accounts";
 import {
   clearSession,
   getStoredSession,
-  signOutOfShopify,
   refreshSessionCustomer,
   startLogin,
   type CustomerOrder,
@@ -212,10 +211,9 @@ export default function OrderHistory() {
             </View>
             <Pressable
               onPress={() => {
-                const idToken = session?.idToken;
                 Alert.alert(
                   "Sign out?",
-                  "You'll be signed out in the app, and we'll end your Shopify browser session too — so next time you can sign in with a different email. A Shopify page opens briefly; just close it.",
+                  "Next time you tap Continue with email, Shopify will ask for an email — so you can sign in with a different one.",
                   [
                     { text: "Cancel", style: "cancel" },
                     {
@@ -224,7 +222,6 @@ export default function OrderHistory() {
                       onPress: async () => {
                         await clearSession();
                         setSession(null);
-                        await signOutOfShopify(idToken);
                       },
                     },
                   ]

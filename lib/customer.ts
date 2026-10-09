@@ -189,6 +189,12 @@ export async function startLogin(): Promise<LoginResult> {
       scopes: ["openid", "email", "customer-account-api:full"],
       responseType: AuthSession.ResponseType.Code,
       usePKCE: true,
+      // Always make Shopify ask who is signing in. Without this, a live
+      // Shopify browser session silently signs the same account back in —
+      // fine until someone wants to switch emails (the whole reason for the
+      // Sign out button). Verified Oct 9: Shopify accepts prompt=login on
+      // this client and keeps the email sign-in form.
+      extraParams: { prompt: "login" },
     });
     const discovery = {
       authorizationEndpoint: authorizeEndpoint(),
@@ -604,22 +610,6 @@ export async function clearSession(): Promise<void> {
   await AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
 }
 
-/**
- * Ends the Shopify *browser* session too. Clearing the app's stored token is
- * not enough to switch emails: the hosted sign-in lives in Safari's cookie
- * jar, so Shopify silently signs the same account back in. Opening
- * Shopify's end-session endpoint in the browser kills that session, and the
- * next "Continue with email" shows the email form again.
- */
-export async function signOutOfShopify(idToken?: string): Promise<void> {
-  const base = `https://shopify.com/authentication/${CUSTOMER_API_CONFIG.shopId}/logout`;
-  const url = idToken ? `${base}?id_token_hint=${encodeURIComponent(idToken)}` : base;
-  try {
-    await WebBrowser.openBrowserAsync(url);
-  } catch {
-    /* best effort — the local session is already cleared */
-  }
-}
 
 /* ------------------------------ Local profile ------------------------------ */
 /* Profile extras Shopify doesn't natively store (interests, socials, avatar,
