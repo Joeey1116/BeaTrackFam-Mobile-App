@@ -114,6 +114,20 @@ jobs:
           fi
           grep '^org.gradle.jvmargs' android/gradle.properties
 
+      - name: Patch R8 missing-class rules for Stripe
+        # minifyReleaseWithR8 fails on the prebuilt project: Stripe's
+        # Android SDK references pushProvisioning classes we never use
+        # (no wallet provisioning — Google Pay goes through the Stripe
+        # sheet), and R8 treats them as missing. Suppress them.
+        run: |
+          mkdir -p android/app
+          touch android/app/proguard-rules.pro
+          cat >> android/app/proguard-rules.pro <<'EOF'
+          -dontwarn com.stripe.android.pushProvisioning.**
+          -dontwarn com.stripe.android.googlepaylauncher.**
+          EOF
+          tail -2 android/app/proguard-rules.pro
+
       - name: Build the release bundle (AAB)
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
