@@ -4,6 +4,11 @@ name: Build iOS IPA
 # minutes are only spent when someone clicks "Run workflow" in the Actions tab.
 on:
   workflow_dispatch:
+    inputs:
+      upload_to_testflight:
+        description: 'Upload the IPA to App Store Connect (TestFlight) after building'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -154,6 +159,32 @@ jobs:
           path: build/ipa/*.ipa
           if-no-files-found: error
           retention-days: 30
+
+      - name: Upload the build to App Store Connect (TestFlight)
+        if: inputs.upload_to_testflight
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+        run: |
+          IPA="$(ls "$GITHUB_WORKSPACE"/build/ipa/*.ipa | head -1)"
+          echo "Uploading $IPA to App Store Connect..."
+          # altool looks for AuthKey_<id>.p8 in ~/.appstoreconnect/private_keys
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          cp "$HOME/private_keys/AuthKey_${ASC_API_KEY_ID}.p8" "$HOME/.appstoreconnect/private_keys/"
+          ok=""
+          for attempt in 1 2 3; do
+            echo "Upload attempt $attempt of 3..."
+            if xcrun altool --upload-app --type ios --file "$IPA" \
+                 --apiKey "$ASC_API_KEY_ID" --apiIssuer "$ASC_API_ISSUER_ID"; then
+              ok=1; break
+            fi
+            sleep 20
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::TestFlight upload failed after 3 attempts. The IPA is still saved as a run artifact above — upload that file in Transporter instead."
+            exit 1
+          fi
+          echo "Uploaded. Apple processes the build (usually ~5-30 min), then it appears in TestFlight."
 
       - name: Remove the API key
         if: always()
