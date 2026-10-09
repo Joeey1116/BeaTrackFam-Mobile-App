@@ -1,0 +1,6 @@
+## What's new in this version
+- In-app payments are fully live: pay with cards, Apple Pay, Google Pay, and Klarna/Affirm where eligible — without leaving the app
+- Promo codes are checked against our store the moment you tap Apply — only real codes stick, and your discount shows right in the order summary
+- Faster checkout: the payment sheet loads while you fill in your details, so Continue to Payment opens instantly
+- Cleaner Shop tab with a single search bar
+Questions or concerns? Email us at contact@beatrackfam.info
