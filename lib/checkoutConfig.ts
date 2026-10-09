@@ -32,6 +32,21 @@ export const APPLE_MERCHANT_ID = "merchant.com.beatrackfaminc";
 export const CHECKOUT_WORKER_URL =
   "https://beatrackfam-checkout.contact-beatrackfam.workers.dev";
 
+/**
+ * Owner-only checkout TEST mode (see lib/checkoutMode.ts): when Joey is
+ * signed in as the owner and flips the hidden switch in App Settings,
+ * checkout talks to the TEST worker + Stripe test keys so he can place
+ * full test orders (4242 cards, declines, etc.) with zero real money.
+ * Customers never see the switch (it renders only for the owner
+ * account), and the live path above is the default for everyone.
+ * Fill these two in to arm test mode; until then the switch explains
+ * that test checkout isn't configured yet.
+ */
+export const STRIPE_TEST_PUBLISHABLE_KEY = "";
+
+export const TEST_CHECKOUT_WORKER_URL =
+  "https://beatrackfam-checkout-test.contact-beatrackfam.workers.dev";
+
 export const isStripeKeyTest = () =>
   STRIPE_PUBLISHABLE_KEY.startsWith("pk_test_");
 

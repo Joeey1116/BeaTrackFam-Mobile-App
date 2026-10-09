@@ -460,7 +460,7 @@ async function ensureOrder(env, paymentIntentId) {
         },
       },
     ],
-    tags: ["app-checkout"],
+    tags: [(env.ORDER_TAG || "").trim() || "app-checkout"],
     note: [
       "Paid in the BeaTrackFam app (Stripe).",
       `Stripe payment: ${paymentIntentId}`,

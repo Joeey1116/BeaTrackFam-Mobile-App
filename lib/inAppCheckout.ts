@@ -4,10 +4,8 @@
  * for the deploy guide. Payment happens in the app; the worker creates
  * the paid Shopify order only after the money lands.
  */
-import {
-  CHECKOUT_WORKER_URL,
-  isInAppCheckoutEnabled,
-} from "./checkoutConfig";
+import { isInAppCheckoutEnabled } from "./checkoutConfig";
+import { resolveCheckoutRuntime } from "./checkoutMode";
 import type { CartLineInput, CheckoutBuyer } from "./storefront";
 
 import * as accountsCfg from "./accountsConfig";
@@ -49,7 +47,7 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<T> 
   payload[GUARD_FIELD] = WORKER_GUARD;
   let res: Response;
   try {
-    res = await fetch(`${CHECKOUT_WORKER_URL}${path}`, {
+    res = await fetch(`${resolveCheckoutRuntime().workerUrl}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -74,7 +72,7 @@ export async function quoteInAppCheckout(
   discountCodes: string[],
   buyer: CheckoutBuyer
 ): Promise<InAppQuote> {
-  if (!isInAppCheckoutEnabled()) {
+  if (!resolveCheckoutRuntime().configured) {
     throw new Error("In-app checkout isn't set up yet.");
   }
   return post<InAppQuote>("/quote", {

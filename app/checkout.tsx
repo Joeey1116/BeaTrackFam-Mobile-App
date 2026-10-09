@@ -39,10 +39,8 @@ import {
   presentNativeCheckout,
 } from "../lib/nativeCheckout";
 import { useStripe } from "@stripe/stripe-react-native";
-import {
-  isInAppCheckoutEnabled,
-  isStripeKeyTest,
-} from "../lib/checkoutConfig";
+import { isInAppCheckoutEnabled } from "../lib/checkoutConfig";
+import { useCheckoutRuntime } from "../lib/checkoutMode";
 import {
   confirmInAppOrder,
   quoteInAppCheckout,
@@ -91,6 +89,7 @@ async function openCheckoutInBrowser(checkoutUrl: string): Promise<void> {
 
 export default function Checkout() {
   const { colors } = useTheme();
+  const checkoutRuntime = useCheckoutRuntime();
   const router = useRouter();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const {
@@ -330,7 +329,7 @@ export default function Checkout() {
         ? {
             googlePay: {
               merchantCountryCode: "US",
-              testEnv: isStripeKeyTest(),
+              testEnv: checkoutRuntime.testMode,
               currencyCode: quote.currency,
             },
           }
@@ -610,6 +609,14 @@ export default function Checkout() {
       <ScreenHeader title="Checkout" align="center" showBack />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={[styles.pageTitle, { color: colors.text }]}>Checkout</Text>
+        {checkoutRuntime.testMode && (
+          <View style={styles.testBanner}>
+            <Ionicons name="flask-outline" size={16} color="#FFFFFF" />
+            <Text style={styles.testBannerText}>
+              TEST MODE — owner testing. No real money moves.
+            </Text>
+          </View>
+        )}
 
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
           <View style={styles.secureRow}>
@@ -1040,6 +1047,23 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     letterSpacing: -0.3,
     marginBottom: Spacing.md,
+  },
+  testBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#111111",
+    borderRadius: Radius.lg,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: -Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  testBannerText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+    flex: 1,
   },
   card: {
     borderRadius: Radius.xl,

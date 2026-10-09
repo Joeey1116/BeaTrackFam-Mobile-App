@@ -1,3 +1,4 @@
+import React, { useEffect } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { StripeProvider } from "@stripe/stripe-react-native";
@@ -5,7 +6,11 @@ import { ThemeProvider, useTheme } from "../components/ThemeProvider";
 import { ShopProvider } from "../store/shop";
 import { usePushNotifications } from "../lib/push";
 import { useLaunchPermissions } from "../lib/launchPermissions";
-import { APPLE_MERCHANT_ID, stripeProviderKey } from "../lib/checkoutConfig";
+import { APPLE_MERCHANT_ID } from "../lib/checkoutConfig";
+import {
+  hydrateCheckoutMode,
+  useCheckoutRuntime,
+} from "../lib/checkoutMode";
 
 function ThemedStatusBar() {
   const { isDark } = useTheme();
@@ -15,9 +20,18 @@ function ThemedStatusBar() {
 export default function RootLayout() {
   usePushNotifications();
   useLaunchPermissions();
+  const runtime = useCheckoutRuntime();
+  useEffect(() => {
+    void hydrateCheckoutMode();
+  }, []);
+  const providerKey =
+    runtime.publishableKey.trim().length > 10
+      ? runtime.publishableKey.trim()
+      : "pk_test_not_configured";
   return (
     <StripeProvider
-      publishableKey={stripeProviderKey()}
+      key={providerKey}
+      publishableKey={providerKey}
       merchantIdentifier={APPLE_MERCHANT_ID}
       urlScheme="beatrackfam"
     >
