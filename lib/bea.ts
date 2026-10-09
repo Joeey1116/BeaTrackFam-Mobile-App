@@ -5,17 +5,23 @@
  * AI: product search + prices from the live catalog (lib/shopify),
  * order status/tracking from the customer's real orders, and policy
  * answers from the shared FAQ data (data/faq.ts). Anything she can't
- * answer from that data falls back to the best-matching FAQ entries and
- * a human handoff at contact@beatrackfam.info. She never invents
- * products, prices, orders or promo codes.
+ * answer from that data falls back to the best-matching FAQ entries
+ * and a human handoff: live chat through Shopify Inbox (app/shop-chat)
+ * or email. She never invents products, prices, orders or promo codes.
  */
 import type { CustomerOrder } from "./customer";
 import type { AppAccount, OrderReceipt } from "./accounts";
 import { formatMoney, type Product } from "./shopify";
 import { FAQS, scoreFaq, type FaqEntry } from "../data/faq";
 import { receiptStatusLabel, shopifyStatusLabel } from "./inbox";
+import {
+  HOURS_CONFIGURED,
+  SUPPORT_EMAIL,
+  isOpenNow,
+  nextOpeningLabel,
+} from "./supportConfig";
 
-export const CONTACT_EMAIL = "contact@beatrackfam.info";
+export const CONTACT_EMAIL = SUPPORT_EMAIL;
 
 export type BeaRoute =
   | { pathname: "/settings/order-history" }
@@ -27,7 +33,8 @@ export type BeaRoute =
   | { pathname: "/settings/order/shopify"; params: { id: string } }
   | { pathname: "/settings/order/[id]"; params: { id: string } }
   | { pathname: "/product/[id]"; params: { id: string } }
-  | { pathname: "/settings/policies/[slug]"; params: { slug: string } };
+  | { pathname: "/settings/policies/[slug]"; params: { slug: string } }
+  | { pathname: "/shop-chat" };
 
 export interface BeaAction {
   label: string;
@@ -59,6 +66,10 @@ const has = (text: string, ...words: string[]) =>
 const HUMAN_ACTION: BeaAction = {
   label: `Email us — ${CONTACT_EMAIL}`,
   url: `mailto:${CONTACT_EMAIL}`,
+};
+const CHAT_ACTION: BeaAction = {
+  label: "Open live chat",
+  route: { pathname: "/shop-chat" },
 };
 const ORDERS_ACTION: BeaAction = {
   label: "Open Order History",
@@ -214,6 +225,35 @@ function orderNumberReply(ctx: BeaContext, digits: string): BeaReply {
   };
 }
 
+/* ----------------------------- Human handoff ----------------------------- */
+
+/**
+ * "Talk to a human" — hands off to a real person from the Fam.
+ * Primary path is live chat: it opens the storefront chat widget
+ * (app/shop-chat), which lands in the Shopify Inbox app where the Fam
+ * reads and replies. Email stays one tap behind it. Copy follows the
+ * posted business hours (lib/supportConfig).
+ */
+function humanReply(): BeaReply {
+  if (HOURS_CONFIGURED && isOpenNow()) {
+    return {
+      text: "You got it — a real human from the Fam, not a bot wall. We're online right now, so open the live chat and say hi. It lands in our Shopify Inbox, which means even if we step away mid-chat, your message won't get lost.",
+      actions: [CHAT_ACTION, HUMAN_ACTION],
+    };
+  }
+  if (HOURS_CONFIGURED) {
+    const back = nextOpeningLabel();
+    return {
+      text: `You got it — a real human from the Fam, not a bot wall. We're offline at the moment${back ? ` — we're back ${back}` : ""}. Open the live chat and drop your message anyway: it lands in our Shopify Inbox and we answer every single one when we're back. Email works too.`,
+      actions: [CHAT_ACTION, HUMAN_ACTION],
+    };
+  }
+  return {
+    text: "You got it — a real human from the Fam, not a bot wall. Open the live chat and say hi — we read every chat in our Shopify Inbox and answer personally. Email works too.",
+    actions: [CHAT_ACTION, HUMAN_ACTION],
+  };
+}
+
 /* --------------------------------- Brain --------------------------------- */
 
 export function answerBea(raw: string, ctx: BeaContext): BeaReply {
@@ -233,13 +273,7 @@ export function answerBea(raw: string, ctx: BeaContext): BeaReply {
   if (
     has(text, "human", "real person", "agent", "someone real", "contact", "talk to")
   ) {
-    return {
-      text: `Of course — the Fam answers email personally at ${CONTACT_EMAIL}. Tell them what you need and mention you came from the app. The Customer Service center has the quick answers too.`,
-      actions: [
-        HUMAN_ACTION,
-        { label: "Customer Service center", route: { pathname: "/settings/support" } },
-      ],
-    };
+    return humanReply();
   }
 
   if (

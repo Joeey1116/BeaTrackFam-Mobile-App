@@ -43,6 +43,11 @@ import {
   receiptStatusLabel,
   shopifyStatusLabel,
 } from "../../lib/inbox";
+import {
+  HOURS_CONFIGURED,
+  isOpenNow,
+  nextOpeningLabel,
+} from "../../lib/supportConfig";
 import type { CustomerOrder } from "../../lib/customer";
 
 const CONTACT_EMAIL = "contact@beatrackfam.info";
@@ -144,6 +149,18 @@ export default function CustomerService() {
   const hasOrders = orderRows.length > 0;
   const searching = query.trim().length > 0;
   const results = searching ? searchFaqs(query) : [];
+
+  // Live chat subtitle follows the posted business hours.
+  const chatSubtitle = !HOURS_CONFIGURED
+    ? "We read every chat in Shopify Inbox"
+    : isOpenNow()
+      ? "We're online now — say hi"
+      : (() => {
+          const back = nextOpeningLabel();
+          return back
+            ? `Offline — we're back ${back}`
+            : "Leave a message — we reply when we're back";
+        })();
 
   const icon = (name: string) => (
     <Ionicons
@@ -291,6 +308,12 @@ export default function CustomerService() {
             ))}
 
             <SectionLabel text="STILL NEED US?" />
+            <MenuRow
+              icon={icon("chatbubbles-outline")}
+              title="Live chat"
+              subtitle={chatSubtitle}
+              onPress={() => router.push("/shop-chat")}
+            />
             <MenuRow
               icon={icon("mail-outline")}
               title="Email Us"

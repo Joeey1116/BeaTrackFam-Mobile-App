@@ -35,6 +35,7 @@ export default function RootLayout() {
           <Stack.Screen name="cart" />
           <Stack.Screen name="inbox" />
           <Stack.Screen name="ask-bea" />
+          <Stack.Screen name="shop-chat" />
           <Stack.Screen name="profile" />
           <Stack.Screen name="profile/edit" />
           <Stack.Screen name="profile/addresses" />
