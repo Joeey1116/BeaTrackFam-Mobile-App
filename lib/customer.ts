@@ -59,6 +59,36 @@ export interface CustomerOrder {
   processedAt: string;
   totalPrice: { amount: string; currencyCode: string };
   fulfillmentStatus?: string | null;
+  financialStatus?: string | null;
+}
+
+export interface CustomerOrderLineItem {
+  id: string;
+  name: string;
+  variantTitle?: string | null;
+  quantity: number;
+  imageUrl?: string | null;
+  price?: { amount: string; currencyCode: string } | null;
+}
+
+export interface CustomerTracking {
+  company?: string | null;
+  number?: string | null;
+  url?: string | null;
+}
+
+export interface CustomerFulfillment {
+  status?: string | null;
+  tracking: CustomerTracking[];
+}
+
+export interface CustomerOrderDetail extends CustomerOrder {
+  subtotalPrice?: { amount: string; currencyCode: string } | null;
+  totalShippingPrice?: { amount: string; currencyCode: string } | null;
+  totalTax?: { amount: string; currencyCode: string } | null;
+  shippingAddress?: CustomerAddress | null;
+  lineItems: CustomerOrderLineItem[];
+  fulfillments: CustomerFulfillment[];
 }
 
 export interface Customer {
@@ -309,6 +339,144 @@ export async function fetchCustomer(
       reason: e instanceof Error ? e.message : "Couldn't load your profile.",
     };
   }
+}
+
+const ORDER_DETAIL_RICH = `
+  query OrderDetail($id: ID!) {
+    order(id: $id) {
+      id
+      name
+      processedAt
+      totalPrice { amount currencyCode }
+      subtotalPrice { amount currencyCode }
+      totalShippingPrice { amount currencyCode }
+      totalTax { amount currencyCode }
+      fulfillmentStatus
+      financialStatus
+      shippingAddress {
+        id firstName lastName address1 address2 city province country zip phone
+      }
+      lineItems(first: 50) {
+        nodes {
+          id
+          name
+          variantTitle
+          quantity
+          image { url }
+          currentPrice { amount currencyCode }
+        }
+      }
+      fulfillments(first: 10) {
+        nodes {
+          status
+          trackingInformation { company number url }
+        }
+      }
+    }
+  }
+`;
+
+const ORDER_DETAIL_BASIC = `
+  query OrderDetail($id: ID!) {
+    order(id: $id) {
+      id
+      name
+      processedAt
+      totalPrice { amount currencyCode }
+      fulfillmentStatus
+      financialStatus
+      lineItems(first: 50) {
+        nodes { id name variantTitle quantity image { url } }
+      }
+    }
+  }
+`;
+
+function money(m: any): { amount: string; currencyCode: string } | null {
+  if (!m) return null;
+  return {
+    amount: String(m.amount ?? "0"),
+    currencyCode: String(m.currencyCode ?? "USD"),
+  };
+}
+
+function mapOrderDetail(o: any): CustomerOrderDetail {
+  return {
+    id: String(o.id ?? ""),
+    name: String(o.name ?? ""),
+    processedAt: String(o.processedAt ?? ""),
+    totalPrice: money(o.totalPrice) ?? { amount: "0", currencyCode: "USD" },
+    subtotalPrice: money(o.subtotalPrice),
+    totalShippingPrice: money(o.totalShippingPrice),
+    totalTax: money(o.totalTax),
+    fulfillmentStatus: o.fulfillmentStatus ?? null,
+    financialStatus: o.financialStatus ?? null,
+    shippingAddress: o.shippingAddress
+      ? {
+          id: String(o.shippingAddress.id ?? ""),
+          firstName: o.shippingAddress.firstName ?? null,
+          lastName: o.shippingAddress.lastName ?? null,
+          address1: o.shippingAddress.address1 ?? null,
+          address2: o.shippingAddress.address2 ?? null,
+          city: o.shippingAddress.city ?? null,
+          province: o.shippingAddress.province ?? null,
+          country: o.shippingAddress.country ?? null,
+          zip: o.shippingAddress.zip ?? null,
+          phone: o.shippingAddress.phone ?? null,
+        }
+      : null,
+    lineItems: (o.lineItems?.nodes ?? []).map((li: any) => ({
+      id: String(li.id ?? ""),
+      name: String(li.name ?? ""),
+      variantTitle: li.variantTitle ?? null,
+      quantity: Number(li.quantity ?? 1),
+      imageUrl: li.image?.url ?? null,
+      price: money(li.currentPrice),
+    })),
+    fulfillments: (o.fulfillments?.nodes ?? []).map((f: any) => ({
+      status: f.status ?? null,
+      tracking: (f.trackingInformation ?? []).map((t: any) => ({
+        company: t.company ?? null,
+        number: t.number ?? null,
+        url: t.url ?? null,
+      })),
+    })),
+  };
+}
+
+/**
+ * Fetches one order's full detail (line items, address, tracking) from the
+ * Customer Account API. Tries the rich selection first and falls back to a
+ * minimal one so a missing field never blanks the whole screen.
+ */
+export async function fetchOrderDetail(
+  accessToken: string,
+  orderId: string
+): Promise<{ ok: true; order: CustomerOrderDetail } | { ok: false; reason: string }> {
+  for (const query of [ORDER_DETAIL_RICH, ORDER_DETAIL_BASIC]) {
+    try {
+      const res = await fetch(graphqlEndpoint(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Match fetchCustomer exactly: the Customer Account API expects the
+          // access token as a Bearer <redacted>
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ query, variables: { id: orderId } }),
+      });
+      if (!res.ok) continue;
+      const json = (await res.json()) as {
+        data?: { order?: any };
+        errors?: { message: string }[];
+      };
+      if (json.errors?.length || !json.data?.order) continue;
+      return { ok: true, order: mapOrderDetail(json.data.order) };
+    } catch {
+      continue;
+    }
+  }
+  return { ok: false, reason: "Couldn't load this order. Pull to try again." };
 }
 
 /** Refreshes the stored session's customer data (profile, orders). */
