@@ -75,13 +75,13 @@ export function ScreenHeader({
           align === "center" && styles.headerRowCenter,
         ]}
       >
-        <View style={styles.headerSide}>
-          {showBack && (
+        {showBack && (
+          <View style={styles.headerSide}>
             <Pressable onPress={() => router.back()} hitSlop={12}>
               <Ionicons name="arrow-back" size={24} color={colors.text} />
             </Pressable>
-          )}
-        </View>
+          </View>
+        )}
         <View style={styles.headerTitleWrap}>
           {logo ? <Image source={logo} style={styles.headerLogo} /> : null}
           <Text
@@ -173,6 +173,9 @@ interface TextFieldProps {
   secureTextEntry?: boolean;
   keyboardType?: TextInputProps["keyboardType"];
   autoCapitalize?: TextInputProps["autoCapitalize"];
+  /** System autofill hints (iOS textContentType / Android autoComplete). */
+  textContentType?: TextInputProps["textContentType"];
+  autoComplete?: TextInputProps["autoComplete"];
 }
 
 export function TextField({
@@ -183,6 +186,8 @@ export function TextField({
   secureTextEntry = false,
   keyboardType = "default",
   autoCapitalize = "sentences",
+  textContentType,
+  autoComplete,
 }: TextFieldProps) {
   const { colors } = useTheme();
   const [hidden, setHidden] = useState(secureTextEntry);
@@ -204,6 +209,8 @@ export function TextField({
           secureTextEntry={hidden}
           keyboardType={keyboardType}
           autoCapitalize={autoCapitalize}
+          textContentType={textContentType}
+          autoComplete={autoComplete}
         />
         {secureTextEntry && (
           <Pressable onPress={() => setHidden((h) => !h)} hitSlop={10}>

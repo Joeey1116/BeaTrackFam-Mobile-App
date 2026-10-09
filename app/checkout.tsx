@@ -437,6 +437,8 @@ export default function Checkout() {
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+            textContentType="emailAddress"
+            autoComplete="email"
           />
           <View style={styles.row}>
             <View style={styles.half}>
@@ -445,6 +447,8 @@ export default function Checkout() {
                 placeholder="Jane"
                 value={firstName}
                 onChangeText={setFirstName}
+                textContentType="givenName"
+                autoComplete="given-name"
               />
             </View>
             <View style={styles.half}>
@@ -453,6 +457,8 @@ export default function Checkout() {
                 placeholder="Doe"
                 value={lastName}
                 onChangeText={setLastName}
+                textContentType="familyName"
+                autoComplete="family-name"
               />
             </View>
           </View>
@@ -461,12 +467,15 @@ export default function Checkout() {
             placeholder="123 Main St"
             value={address1}
             onChangeText={setAddress1}
+            textContentType="streetAddressLine1"
+            autoComplete="street-address"
           />
           <TextField
             label="Apt, suite, etc. (optional)"
             placeholder=""
             value={address2}
             onChangeText={setAddress2}
+            textContentType="streetAddressLine2"
           />
           <View style={styles.row}>
             <View style={styles.half}>
@@ -475,6 +484,8 @@ export default function Checkout() {
                 placeholder="New York"
                 value={city}
                 onChangeText={setCity}
+                textContentType="addressCity"
+               
               />
             </View>
             <View style={styles.quarter}>
@@ -484,6 +495,8 @@ export default function Checkout() {
                 value={province}
                 onChangeText={setProvince}
                 autoCapitalize="characters"
+                textContentType="addressState"
+               
               />
             </View>
             <View style={styles.quarter}>
@@ -493,6 +506,8 @@ export default function Checkout() {
                 value={zip}
                 onChangeText={setZip}
                 keyboardType="numbers-and-punctuation"
+                textContentType="postalCode"
+                autoComplete="postal-code"
               />
             </View>
           </View>
@@ -534,6 +549,8 @@ export default function Checkout() {
             value={phone}
             onChangeText={setPhone}
             keyboardType="phone-pad"
+            textContentType="telephoneNumber"
+            autoComplete="tel"
           />
         </View>
 

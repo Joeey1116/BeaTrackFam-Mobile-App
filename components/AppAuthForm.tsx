@@ -197,6 +197,8 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
           onChangeText={setEmail}
           keyboardType="email-address"
           autoCapitalize="none"
+          textContentType="emailAddress"
+          autoComplete="email"
         />
 
         <TextField
@@ -208,6 +210,8 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
           onChangeText={setPassword}
           secureTextEntry
           autoCapitalize="none"
+          textContentType={isSignup ? "newPassword" : "password"}
+          autoComplete={isSignup ? "new-password" : "current-password"}
         />
 
         {isSignup && (
@@ -218,6 +222,8 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
             onChangeText={setConfirmPassword}
             secureTextEntry
             autoCapitalize="none"
+            textContentType="newPassword"
+            autoComplete="new-password"
           />
         )}
 

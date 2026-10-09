@@ -62,19 +62,19 @@ function AddressForm({
     <View style={[styles.form, { backgroundColor: colors.surface }]}>
       <TextField label="Label" placeholder="Home, Work…" value={form.label} onChangeText={set("label")} />
       <TextField label="Full name" placeholder="Recipient name" value={form.name} onChangeText={set("name")} autoCapitalize="words" />
-      <TextField label="Street" placeholder="Street address" value={form.street} onChangeText={set("street")} />
-      <TextField label="Apt / Suite (optional)" placeholder="" value={form.street2} onChangeText={set("street2")} />
-      <TextField label="City" placeholder="City" value={form.city} onChangeText={set("city")} autoCapitalize="words" />
+      <TextField label="Street" placeholder="Street address" value={form.street} onChangeText={set("street")} textContentType="streetAddressLine1" autoComplete="street-address" />
+      <TextField label="Apt / Suite (optional)" placeholder="" value={form.street2} onChangeText={set("street2")} textContentType="streetAddressLine2" />
+      <TextField label="City" placeholder="City" value={form.city} onChangeText={set("city")} autoCapitalize="words" textContentType="addressCity" />
       <View style={styles.row2}>
         <View style={styles.half}>
-          <TextField label="State" placeholder="NY" value={form.province} onChangeText={set("province")} />
+          <TextField label="State" placeholder="NY" value={form.province} onChangeText={set("province")} textContentType="addressState" />
         </View>
         <View style={styles.half}>
-          <TextField label="ZIP" placeholder="10301" value={form.zip} onChangeText={set("zip")} />
+          <TextField label="ZIP" placeholder="10301" value={form.zip} onChangeText={set("zip")} textContentType="postalCode" autoComplete="postal-code" />
         </View>
       </View>
       <TextField label="Country" placeholder="United States" value={form.country} onChangeText={set("country")} autoCapitalize="words" />
-      <TextField label="Phone (optional)" placeholder="" value={form.phone} onChangeText={set("phone")} />
+      <TextField label="Phone (optional)" placeholder="" value={form.phone} onChangeText={set("phone")} textContentType="telephoneNumber" autoComplete="tel" />
       <Pressable
         onPress={() => set("isDefault")(!form.isDefault)}
         style={styles.checkRow}
