@@ -43,7 +43,12 @@ import {
   isInAppCheckoutEnabled,
   isStripeKeyTest,
 } from "../lib/checkoutConfig";
-import { confirmInAppOrder, quoteInAppCheckout } from "../lib/inAppCheckout";
+import {
+  confirmInAppOrder,
+  quoteInAppCheckout,
+  validatePromoCodes,
+  type InAppQuote,
+} from "../lib/inAppCheckout";
 
 const PAYMENT_METHODS = [
   { label: "Apple Pay", icon: "logo-apple" },
@@ -131,10 +136,20 @@ export default function Checkout() {
   const [busy, setBusy] = useState(false);
   const [promoInput, setPromoInput] = useState("");
   const [promoCodes, setPromoCodes] = useState<string[]>([]);
+  const [promoBusy, setPromoBusy] = useState(false);
+  /** Discounted totals from Shopify (set by promo validation / quotes). */
+  const [promoTotals, setPromoTotals] = useState<InAppQuote["totals"] | null>(
+    null
+  );
+  /** Pre-quoted + pre-initialized payment, ready to present instantly. */
+  const [prepared, setPrepared] = useState<{
+    key: string;
+    quote: InAppQuote;
+  } | null>(null);
 
-  const addPromoCode = () => {
+  const applyPromoCode = async () => {
     const code = promoInput.trim().toUpperCase();
-    if (!code) return;
+    if (!code || promoBusy) return;
     if (promoCodes.length >= 2) {
       Alert.alert(
         "Two-code limit",
@@ -146,8 +161,63 @@ export default function Checkout() {
       Alert.alert("Already added", "That code is already on this order.");
       return;
     }
+    // When in-app checkout is live, Shopify itself checks the code the
+    // moment it's applied — only real codes stick.
+    if (isInAppCheckoutEnabled() && cartLines.length > 0) {
+      setPromoBusy(true);
+      try {
+        const result = await validatePromoCodes(
+          cartLines.map((l) => ({
+            variantId: l.variantId,
+            quantity: l.quantity,
+          })),
+          [...promoCodes, code]
+        );
+        if (!result.appliedCodes.includes(code)) {
+          Alert.alert(
+            "Code didn't apply",
+            `"${code}" isn't a valid code for this order. Check the spelling and try again.`
+          );
+          return;
+        }
+        setPromoCodes(result.appliedCodes);
+        setPromoTotals(result.totals);
+        setPromoInput("");
+      } catch {
+        Alert.alert(
+          "Couldn't check that code",
+          "We couldn't reach the store to verify it. Check your connection and try again."
+        );
+      } finally {
+        setPromoBusy(false);
+      }
+      return;
+    }
     setPromoCodes((codes) => [...codes, code]);
     setPromoInput("");
+  };
+
+  const removePromoCode = async (code: string) => {
+    const remaining = promoCodes.filter((c) => c !== code);
+    setPromoCodes(remaining);
+    setPrepared(null);
+    if (!isInAppCheckoutEnabled() || remaining.length === 0) {
+      setPromoTotals(null);
+      return;
+    }
+    try {
+      const result = await validatePromoCodes(
+        cartLines.map((l) => ({
+          variantId: l.variantId,
+          quantity: l.quantity,
+        })),
+        remaining
+      );
+      setPromoCodes(result.appliedCodes);
+      setPromoTotals(result.appliedCodes.length > 0 ? result.totals : null);
+    } catch {
+      setPromoTotals(null);
+    }
   };
 
   // Saved-address picker: "Use my saved address" fills the form and
@@ -203,28 +273,41 @@ export default function Checkout() {
    * fulfills it like always. A declined card shows Stripe's own
    * error inside the payment sheet — no order, no charge.
    */
-  const payInApp = async (
-    liveLines: typeof cartLines,
-    buyer: CheckoutBuyer
-  ) => {
-    const quote = await quoteInAppCheckout(
-      liveLines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
-      promoCodes,
-      buyer
-    );
-    if (quote.rejectedCodes.length > 0) {
-      setPromoCodes((codes) =>
-        codes.filter((c) => !quote.rejectedCodes.includes(c))
-      );
-      Alert.alert(
-        "Promo code didn't apply",
-        `${quote.rejectedCodes.join(", ")} ${
-          quote.rejectedCodes.length === 1 ? "was" : "were"
-        } removed. Review your total, then tap Pay again.`
-      );
-      return;
-    }
+  const buildBuyer = (): CheckoutBuyer => ({
+    email: email.trim(),
+    firstName: firstName.trim(),
+    lastName: lastName.trim(),
+    address1: address1.trim(),
+    address2: address2.trim() || undefined,
+    city: city.trim(),
+    provinceCode: province.trim(),
+    zip: zip.trim(),
+    countryCode: country,
+    phone: phone.trim() || undefined,
+  });
 
+  const quoteKeyFor = (
+    lines: typeof cartLines,
+    buyer: CheckoutBuyer
+  ): string =>
+    JSON.stringify({
+      l: lines.map((l) => [l.variantId, l.quantity]),
+      c: promoCodes,
+      b: [
+        buyer.email,
+        buyer.firstName,
+        buyer.lastName,
+        buyer.address1,
+        buyer.address2 ?? "",
+        buyer.city,
+        buyer.provinceCode,
+        buyer.zip,
+        buyer.countryCode,
+        buyer.phone ?? "",
+      ],
+    });
+
+  const initSheetFor = async (quote: InAppQuote, buyer: CheckoutBuyer) => {
     const { error: initError } = await initPaymentSheet({
       merchantDisplayName: "BeaTrackFam",
       paymentIntentClientSecret: quote.clientSecret,
@@ -270,13 +353,14 @@ export default function Checkout() {
         },
       },
     });
-    if (initError) {
-      Alert.alert("Couldn't start payment", initError.message);
-      return;
-    }
+    return initError;
+  };
 
+  /** Present the sheet for an initialized quote and finish the order. */
+  const presentAndFinish = async (quote: InAppQuote, buyer: CheckoutBuyer) => {
     const { error: payError } = await presentPaymentSheet();
     if (payError) {
+      setPrepared(null);
       if ((payError as { code?: string }).code !== "Canceled") {
         Alert.alert("Payment didn't go through", payError.message);
       }
@@ -313,6 +397,87 @@ export default function Checkout() {
     router.replace("/thank-you");
   };
 
+  const payInApp = async (
+    liveLines: typeof cartLines,
+    buyer: CheckoutBuyer
+  ) => {
+    // Fast path: the background prefetch already quoted + initialized
+    // the sheet for exactly this cart and address — present instantly.
+    const key = quoteKeyFor(liveLines, buyer);
+    if (
+      prepared &&
+      prepared.key === key &&
+      prepared.quote.rejectedCodes.length === 0
+    ) {
+      await presentAndFinish(prepared.quote, buyer);
+      return;
+    }
+    const quote = await quoteInAppCheckout(
+      liveLines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
+      promoCodes,
+      buyer
+    );
+    if (quote.rejectedCodes.length > 0) {
+      setPromoCodes((codes) =>
+        codes.filter((c) => !quote.rejectedCodes.includes(c))
+      );
+      setPromoTotals(null);
+      Alert.alert(
+        "Promo code didn't apply",
+        `${quote.rejectedCodes.join(", ")} ${
+          quote.rejectedCodes.length === 1 ? "was" : "were"
+        } removed. Review your total, then tap Pay again.`
+      );
+      return;
+    }
+    setPromoTotals(quote.totals);
+    const initError = await initSheetFor(quote, buyer);
+    if (initError) {
+      Alert.alert("Couldn't start payment", initError.message);
+      return;
+    }
+    await presentAndFinish(quote, buyer);
+  };
+
+  // Speed: while the shopper fills in their details, quietly fetch the
+  // Shopify quote and initialize the Stripe sheet in the background, so
+  // "Continue to Payment" opens the sheet with no wait.
+  const prepKey = isInAppCheckoutEnabled()
+    ? quoteKeyFor(cartLines, buildBuyer())
+    : "";
+  React.useEffect(() => {
+    if (!prepKey || cartLines.length === 0) return;
+    if (validate() !== null) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      (async () => {
+        try {
+          const buyer = buildBuyer();
+          const quote = await quoteInAppCheckout(
+            cartLines.map((l) => ({
+              variantId: l.variantId,
+              quantity: l.quantity,
+            })),
+            promoCodes,
+            buyer
+          );
+          if (cancelled || quote.rejectedCodes.length > 0) return;
+          const err = await initSheetFor(quote, buyer);
+          if (cancelled || err) return;
+          setPrepared({ key: prepKey, quote });
+          setPromoTotals(quote.totals);
+        } catch {
+          // Silent — tapping Pay runs the full flow and surfaces errors.
+        }
+      })();
+    }, 900);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepKey]);
+
   const onPay = async () => {
     if (cartLines.length === 0 || busy) return;
     const problem = validate();
@@ -344,18 +509,7 @@ export default function Checkout() {
         );
       }
 
-      const buyer: CheckoutBuyer = {
-        email: email.trim(),
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        address1: address1.trim(),
-        address2: address2.trim() || undefined,
-        city: city.trim(),
-        provinceCode: province.trim(),
-        zip: zip.trim(),
-        countryCode: country,
-        phone: phone.trim() || undefined,
-      };
+      const buyer = buildBuyer();
 
       if (isInAppCheckoutEnabled()) {
         await payInApp(liveLines, buyer);
@@ -713,14 +867,15 @@ export default function Checkout() {
               />
             </View>
             <Pressable
-              onPress={addPromoCode}
+              onPress={applyPromoCode}
+              disabled={promoBusy}
               style={[
                 styles.promoButton,
-                { backgroundColor: colors.text },
+                { backgroundColor: colors.text, opacity: promoBusy ? 0.55 : 1 },
               ]}
             >
               <Text style={[styles.promoButtonText, { color: colors.background }]}>
-                Apply
+                {promoBusy ? "Checking…" : "Apply"}
               </Text>
             </Pressable>
           </View>
@@ -731,9 +886,7 @@ export default function Checkout() {
                 {code}
               </Text>
               <Pressable
-                onPress={() =>
-                  setPromoCodes((codes) => codes.filter((c) => c !== code))
-                }
+                onPress={() => removePromoCode(code)}
                 hitSlop={8}
               >
                 <Ionicons name="close-circle" size={18} color={colors.textMuted} />
@@ -743,7 +896,9 @@ export default function Checkout() {
           <Text style={[styles.promoNote, { color: colors.textMuted }]}>
             {promoCodes.length >= 2
               ? "Two codes on this order — that's the max."
-              : "Add up to 2 codes. They sync straight to your Shopify checkout."}
+              : isInAppCheckoutEnabled()
+                ? "Add up to 2 codes — each one is checked against our store the moment you apply it."
+                : "Add up to 2 codes. They sync straight to your Shopify checkout."}
           </Text>
         </View>
 
@@ -767,13 +922,68 @@ export default function Checkout() {
               {formatMoney(subtotal)}
             </Text>
           </View>
+          {promoTotals &&
+          Number(subtotal.amount) - promoTotals.subtotal > 0.004 ? (
+            <View style={styles.summaryRow}>
+              <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>
+                Discount
+              </Text>
+              <Text style={[styles.summaryValue, { color: colors.text }]}>
+                −
+                {formatMoney({
+                  amount: (
+                    Number(subtotal.amount) - promoTotals.subtotal
+                  ).toFixed(2),
+                  currencyCode: promoTotals.currency,
+                })}
+              </Text>
+            </View>
+          ) : null}
+          {promoTotals && promoTotals.shipping > 0 ? (
+            <View style={styles.summaryRow}>
+              <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>
+                Shipping
+              </Text>
+              <Text style={[styles.summaryValue, { color: colors.text }]}>
+                {formatMoney({
+                  amount: promoTotals.shipping.toFixed(2),
+                  currencyCode: promoTotals.currency,
+                })}
+              </Text>
+            </View>
+          ) : null}
+          {promoTotals && promoTotals.tax > 0 ? (
+            <View style={styles.summaryRow}>
+              <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>
+                Tax
+              </Text>
+              <Text style={[styles.summaryValue, { color: colors.text }]}>
+                {formatMoney({
+                  amount: promoTotals.tax.toFixed(2),
+                  currencyCode: promoTotals.currency,
+                })}
+              </Text>
+            </View>
+          ) : null}
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <View style={styles.summaryRow}>
             <Text style={[styles.totalLabel, { color: colors.text }]}>Total</Text>
             <Text style={[styles.totalValue, { color: colors.text }]}>
-              {formatMoney(subtotal)}
+              {formatMoney(
+                promoTotals
+                  ? {
+                      amount: promoTotals.total.toFixed(2),
+                      currencyCode: promoTotals.currency,
+                    }
+                  : subtotal
+              )}
             </Text>
           </View>
+          {promoTotals && promoTotals.shipping === 0 ? (
+            <Text style={[styles.emptyNote, { color: colors.textDim }]}>
+              Shipping & tax calculated at payment.
+            </Text>
+          ) : null}
           {cartLines.length === 0 && (
             <Text style={[styles.emptyNote, { color: colors.textDim }]}>
               Your cart is empty — add items before checking out.

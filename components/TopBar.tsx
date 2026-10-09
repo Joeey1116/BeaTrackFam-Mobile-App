@@ -62,7 +62,7 @@ function AvatarButton() {
   );
 }
 
-export function TopBar() {
+export function TopBar({ hideSearch = false }: { hideSearch?: boolean }) {
   const { colors } = useTheme();
   const router = useRouter();
   const { unreadCount } = useInbox();
@@ -74,25 +74,31 @@ export function TopBar() {
     >
       <View style={styles.row}>
         <AvatarButton />
-        <Pressable
-          onPress={() => router.push("/(tabs)/collections")}
-          accessibilityLabel="Search the shop"
-          style={({ pressed }) => [
-            styles.searchPill,
-            {
-              backgroundColor: colors.input,
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <Ionicons name="search-outline" size={18} color={colors.textDim} />
-          <Text
-            style={[styles.searchText, { color: colors.textDim }]}
-            numberOfLines={1}
+        {hideSearch ? (
+          // The Shop tab has its own search input right below — showing
+          // both pills stacked is a duplicate. Keep the row layout.
+          <View style={{ flex: 1 }} />
+        ) : (
+          <Pressable
+            onPress={() => router.push("/(tabs)/collections")}
+            accessibilityLabel="Search the shop"
+            style={({ pressed }) => [
+              styles.searchPill,
+              {
+                backgroundColor: colors.input,
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
           >
-            Search the shop…
-          </Text>
-        </Pressable>
+            <Ionicons name="search-outline" size={18} color={colors.textDim} />
+            <Text
+              style={[styles.searchText, { color: colors.textDim }]}
+              numberOfLines={1}
+            >
+              Search the shop…
+            </Text>
+          </Pressable>
+        )}
         <Pressable
           onPress={() => router.push("/inbox")}
           hitSlop={8}

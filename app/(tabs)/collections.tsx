@@ -150,7 +150,7 @@ export default function Collections() {
 
   return (
     <View style={[styles.safe, { backgroundColor: colors.background }]}>
-      <TopBar />
+      <TopBar hideSearch />
       {catalogLoading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.text} />

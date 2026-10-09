@@ -95,6 +95,32 @@ export async function quoteInAppCheckout(
   });
 }
 
+export interface PromoValidation {
+  appliedCodes: string[];
+  rejectedCodes: string[];
+  totals: InAppQuote["totals"];
+  currency: string;
+  lines: InAppQuoteLine[];
+  shippingTitle: string;
+}
+
+/**
+ * Validates promo codes against Shopify (via the worker, dry-run: no
+ * payment intent is created). Used when the shopper taps "Apply" so
+ * only codes Shopify itself accepts ever stick — anything else is
+ * rejected on the spot instead of silently "applying."
+ */
+export async function validatePromoCodes(
+  lines: CartLineInput[],
+  discountCodes: string[]
+): Promise<PromoValidation> {
+  return post<PromoValidation>("/quote", {
+    lines,
+    discountCodes,
+    dryRun: true,
+  });
+}
+
 /**
  * After PaymentSheet reports success: asks the worker to verify the
  * payment with Stripe and create the paid Shopify order (idempotent —

@@ -203,25 +203,32 @@ async function buildCart(env, lines, discountCodes, buyer) {
       quantity: l.quantity,
     })),
     ...(discountCodes.length > 0 ? { discountCodes } : {}),
-    buyerIdentity: {
-      email: buyer.email,
-      ...(buyer.phone ? { phone: buyer.phone } : {}),
-      deliveryAddressPreferences: [
-        {
-          deliveryAddress: {
-            firstName: buyer.firstName,
-            lastName: buyer.lastName,
-            address1: buyer.address1,
-            ...(buyer.address2 ? { address2: buyer.address2 } : {}),
-            city: buyer.city,
-            province: String(buyer.province || "").toUpperCase(),
-            zip: buyer.zip,
-            country: String(buyer.country || "US").toUpperCase(),
+    // Buyer identity is only attached when we actually have buyer
+    // details — promo-code validation (dryRun) prices the cart without
+    // it, and Shopify still reports which codes apply.
+    ...(buyer.email || buyer.address1
+      ? {
+          buyerIdentity: {
+            email: buyer.email,
             ...(buyer.phone ? { phone: buyer.phone } : {}),
+            deliveryAddressPreferences: [
+              {
+                deliveryAddress: {
+                  firstName: buyer.firstName,
+                  lastName: buyer.lastName,
+                  address1: buyer.address1,
+                  ...(buyer.address2 ? { address2: buyer.address2 } : {}),
+                  city: buyer.city,
+                  province: String(buyer.province || "").toUpperCase(),
+                  zip: buyer.zip,
+                  country: String(buyer.country || "US").toUpperCase(),
+                  ...(buyer.phone ? { phone: buyer.phone } : {}),
+                },
+              },
+            ],
           },
-        },
-      ],
-    },
+        }
+      : {}),
   };
   const created = await storefront(env, CART_CREATE, { input });
   const result = created?.cartCreate;
@@ -252,8 +259,12 @@ async function buildCart(env, lines, discountCodes, buyer) {
 async function handleQuote(env, body) {
   const lines = Array.isArray(body.lines) ? body.lines : [];
   const buyer = body.buyer || {};
+  // dryRun: price + validate promo codes only. No Stripe PaymentIntent,
+  // no KV snapshot, no buyer details required — used when the shopper
+  // taps "Apply" on a code so only real Shopify codes ever stick.
+  const dryRun = body.dryRun === true;
   if (lines.length === 0) return json({ error: "Your bag is empty." }, 400);
-  if (!buyer.email || !buyer.address1 || !buyer.city || !buyer.zip) {
+  if (!dryRun && (!buyer.email || !buyer.address1 || !buyer.city || !buyer.zip)) {
     return json({ error: "Shipping details are incomplete." }, 400);
   }
 
@@ -296,6 +307,20 @@ async function handleQuote(env, body) {
         null,
     };
   });
+
+  if (dryRun) {
+    return json({
+      dryRun: true,
+      paymentIntentId: null,
+      clientSecret: null,
+      currency,
+      totals: { subtotal, shipping: shippingTotal, tax: taxTotal, total, currency },
+      shippingTitle: shippingOption?.title || "Shipping",
+      appliedCodes,
+      rejectedCodes,
+      lines: snapshotLines,
+    });
+  }
 
   const pi = await stripe(env, "payment_intents", {
     amount: String(Math.round(total * 100)),
