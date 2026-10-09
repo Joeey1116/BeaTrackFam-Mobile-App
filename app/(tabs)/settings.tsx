@@ -7,12 +7,13 @@
  * out using the existing store sign-out, and a version footer. Every
  * row routes to screens that already exist — nothing was removed.
  */
-import React from "react";
+import React, { useState } from "react";
 import {
   Alert,
   Image,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
@@ -32,6 +33,7 @@ import {
 import { TopBar } from "../../components/TopBar";
 import { NativeDropdown } from "../../components/NativeDropdown";
 import { useShop } from "../../store/shop";
+import { useMergedOrderCount } from "../../lib/ordersCount";
 import { Radius, Spacing, TabBarClearance, Type } from "../../constants/theme";
 
 const STORE_LINKS =
@@ -149,9 +151,9 @@ function GuestHero() {
 }
 
 /** Inverse black/white member card — the eye, the motto, the receipts. */
-function MemberCard() {
+function MemberCard({ orderCount }: { orderCount: number }) {
   const { colors } = useTheme();
-  const { account, orders, profile } = useShop();
+  const { account, profile } = useShop();
   if (!account) return null;
 
   const name =
@@ -160,7 +162,7 @@ function MemberCard() {
   const since = memberSinceLabel(account.createdAt);
   const facts = [
     since ? `Member since ${since}` : null,
-    `${orders.length} order${orders.length === 1 ? "" : "s"}`,
+    `${orderCount} order${orderCount === 1 ? "" : "s"}`,
   ]
     .filter(Boolean)
     .join("  ·  ");
@@ -189,6 +191,21 @@ export default function SettingsHub() {
   const { colors, theme, setTheme } = useTheme();
   const router = useRouter();
   const { account, profile, signOut } = useShop();
+  // Order count merged exactly as Order History shows it (Shopify
+  // session orders incl. cancelled + linked + local receipts, deduped)
+  // — refreshes on focus and on pull-to-refresh.
+  const { count: orderCount, refresh: refreshOrderCount } =
+    useMergedOrderCount();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshOrderCount();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const icon = (name: React.ComponentProps<typeof Ionicons>["name"]) => (
     <Ionicons name={name} size={20} color={colors.text} />
@@ -217,9 +234,20 @@ export default function SettingsHub() {
   return (
     <View style={[styles.safe, { backgroundColor: colors.background }]}>
       <TopBar />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.text}
+            colors={[colors.text]}
+            progressBackgroundColor={colors.surface}
+          />
+        }
+      >
         {account ? <ProfileHero /> : <GuestHero />}
-        <MemberCard />
+        <MemberCard orderCount={orderCount} />
 
         <SectionLabel text="YOUR STUFF" />
 

@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -31,6 +32,8 @@ export default function ProductDetails() {
     toggleWishlist,
     isWishlisted,
     isVariantPurchasable,
+    catalogLoading,
+    refreshCatalog,
   } = useShop();
 
   const product = getProduct(id ?? "");
@@ -50,6 +53,8 @@ export default function ProductDetails() {
     id: string;
     media: ProductMedia;
   } | null>(null);
+  const [mediaNonce, setMediaNonce] = useState(0);
+  const [mediaFetching, setMediaFetching] = useState(false);
   useEffect(() => {
     const numericId = product?.numericId;
     if (!numericId) return;
@@ -62,11 +67,31 @@ export default function ProductDetails() {
       })
       .catch(() => {
         // Fallback: keep using product.images from products.json.
+      })
+      .finally(() => {
+        if (!cancelled) setMediaFetching(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [product?.numericId]);
+  }, [product?.numericId, mediaNonce]);
+
+  // Pull-to-refresh: reload the catalog (fresh product record) and
+  // re-fetch this product's gallery media.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = () => {
+    setRefreshing(true);
+    refreshCatalog();
+    setMediaFetching(true);
+    setMediaNonce((n) => n + 1);
+  };
+
+  // End the spin once both reloads settle (min 400ms, no flicker).
+  useEffect(() => {
+    if (!refreshing || catalogLoading || mediaFetching) return;
+    const t = setTimeout(() => setRefreshing(false), 400);
+    return () => clearTimeout(t);
+  }, [refreshing, catalogLoading, mediaFetching]);
 
   const liveMedia =
     mediaState && product && mediaState.id === product.numericId
@@ -138,7 +163,18 @@ export default function ProductDetails() {
   return (
     <View style={[styles.safe, { backgroundColor: colors.background }]}>
       <ScreenHeader title="Product Details" align="center" showBack right={<CartButton />} />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.text}
+            colors={[colors.text]}
+            progressBackgroundColor={colors.surface}
+          />
+        }
+      >
         <View style={styles.galleryBleed}>
           <ProductGallery
             images={galleryImages}

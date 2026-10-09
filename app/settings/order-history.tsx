@@ -43,6 +43,7 @@ import {
   type CustomerOrder,
   type CustomerSession,
 } from "../../lib/customer";
+import { freshLocalReceipts } from "../../lib/ordersCount";
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -226,20 +227,10 @@ export default function OrderHistory() {
   }, []);
 
   const shopifyOrders: CustomerOrder[] = session?.customer.orders ?? [];
-  // A local receipt whose Shopify twin has arrived (same total, placed within
-  // ~36h before the Shopify record) is shown once, from Shopify; the local
-  // copy covers the gap until then.
-  const freshLocal = localOrders.filter(
-    (o) =>
-      !shopifyOrders.some((s) => {
-        const sameTotal =
-          Number(s.totalPrice.amount) === Number(o.totalAmount) &&
-          s.totalPrice.currencyCode === o.currencyCode;
-        const dt =
-          new Date(s.processedAt).getTime() - new Date(o.placedAt).getTime();
-        return sameTotal && dt > -36 * 3600 * 1000 && dt < 72 * 3600 * 1000;
-      })
-  );
+  // A local receipt whose Shopify twin has arrived is shown once, from
+  // Shopify; the local copy covers the gap until then. (Merge rule is
+  // shared with Profile + Inbox via lib/ordersCount.ts.)
+  const freshLocal = freshLocalReceipts(shopifyOrders, localOrders);
 
   return (
     <View style={[styles.safe, { backgroundColor: colors.background }]}>

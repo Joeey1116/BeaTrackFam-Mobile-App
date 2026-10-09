@@ -1,8 +1,9 @@
 /** Wishlist tab — screen-06 blueprint. TODO: persist via customer metafields. */
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   FlatList,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -58,8 +59,21 @@ function WishlistRow({ product }: { product: Product }) {
 
 export default function Wishlist() {
   const { colors } = useTheme();
-  const { wishlistIds, products } = useShop();
+  const { wishlistIds, products, catalogLoading, refreshCatalog } = useShop();
   const items = products.filter((p) => wishlistIds.includes(p.id));
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    refreshCatalog();
+  };
+
+  // End the pull-to-refresh spin once the catalog settles (min 400ms).
+  useEffect(() => {
+    if (!refreshing || catalogLoading) return;
+    const t = setTimeout(() => setRefreshing(false), 400);
+    return () => clearTimeout(t);
+  }, [refreshing, catalogLoading]);
 
   return (
     <View style={[styles.safe, { backgroundColor: colors.background }]}>
@@ -71,6 +85,15 @@ export default function Wishlist() {
         data={items}
         keyExtractor={(p) => p.id}
         renderItem={({ item }) => <WishlistRow product={item} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.text}
+            colors={[colors.text]}
+            progressBackgroundColor={colors.surface}
+          />
+        }
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <EmptyState

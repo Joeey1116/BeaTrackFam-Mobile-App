@@ -26,6 +26,7 @@ import type {
   OrderReceipt,
 } from "./accounts";
 import { formatMoney, type Product } from "./shopify";
+import { freshLocalReceipts, visibleLinkedOrders } from "./ordersCount";
 import { useShop } from "../store/shop";
 
 const LAST_SEEN_KEY = "beatrackfam.inbox.lastSeen";
@@ -96,7 +97,6 @@ export function buildInboxItems(src: InboxSources): InboxItem[] {
     body: "This is your Inbox — order updates, fresh drops and Fam-only announcements land right here. Loyalty above all.",
   });
 
-  const shopifyIds = new Set(src.shopifyOrders.map((o) => o.id));
   const orderItems: InboxItem[] = [];
 
   for (const o of src.shopifyOrders) {
@@ -112,8 +112,8 @@ export function buildInboxItems(src: InboxSources): InboxItem[] {
     });
   }
 
-  for (const o of src.linkedOrders) {
-    if (shopifyIds.has(o.id)) continue; // live Shopify copy already listed
+  for (const o of visibleLinkedOrders(src.shopifyOrders, src.linkedOrders)) {
+    // live Shopify copy already listed (visibleLinkedOrders dedupes)
     orderItems.push({
       id: `order-lk-${o.id}`,
       kind: "order",
@@ -126,19 +126,8 @@ export function buildInboxItems(src: InboxSources): InboxItem[] {
   }
 
   // Local receipts whose Shopify twin has arrived are shown once, from
-  // Shopify (same rule as Order History): same total, placed within
-  // ~36h before the Shopify record.
-  const freshLocal = src.localOrders.filter(
-    (o) =>
-      !src.shopifyOrders.some((s) => {
-        const sameTotal =
-          Number(s.totalPrice.amount) === Number(o.totalAmount) &&
-          s.totalPrice.currencyCode === o.currencyCode;
-        const dt =
-          new Date(s.processedAt).getTime() - new Date(o.placedAt).getTime();
-        return sameTotal && dt > -36 * 3600 * 1000 && dt < 72 * 3600 * 1000;
-      })
-  );
+  // Shopify (same rule as Order History — shared in lib/ordersCount.ts).
+  const freshLocal = freshLocalReceipts(src.shopifyOrders, src.localOrders);
   for (const o of freshLocal) {
     const status = receiptStatusLabel(o);
     orderItems.push({

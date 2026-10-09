@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -79,6 +80,7 @@ export default function Collections() {
   const cache = useRef(new Map<string, Product[]>());
   const handledCollectionParam = useRef<string | undefined>(undefined);
   const handledQParam = useRef<string | undefined>(undefined);
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadCollection = async (c: Collection) => {
     setActiveCollection(c);
@@ -107,6 +109,24 @@ export default function Collections() {
     }
     void loadCollection(c);
   };
+
+  // Pull-to-refresh: fresh catalog, and if a collection is open,
+  // refetch its products too (bypassing the per-collection cache).
+  const onRefresh = async () => {
+    setRefreshing(true);
+    refreshCatalog();
+    if (activeCollection) {
+      cache.current.delete(activeCollection.handle);
+      await loadCollection(activeCollection);
+    }
+  };
+
+  // End the spin once every reload settles (min 400ms, no flicker).
+  useEffect(() => {
+    if (!refreshing || catalogLoading || collectionLoading) return;
+    const t = setTimeout(() => setRefreshing(false), 400);
+    return () => clearTimeout(t);
+  }, [refreshing, catalogLoading, collectionLoading]);
 
   const clearCollection = () => {
     setActiveCollection(null);
@@ -169,7 +189,18 @@ export default function Collections() {
           </View>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.text}
+              colors={[colors.text]}
+              progressBackgroundColor={colors.surface}
+            />
+          }
+        >
           <View style={[styles.searchRow, { backgroundColor: colors.input }]}>
             <Ionicons name="search-outline" size={20} color={colors.textDim} />
             <TextInput

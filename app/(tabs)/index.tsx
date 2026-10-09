@@ -6,6 +6,7 @@ import {
   Image,
   type ImageSourcePropType,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -371,6 +372,20 @@ export default function Home() {
     profile,
   } = useShop();
   const [bannerVisible, setBannerVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    refreshCatalog();
+  };
+
+  // End the pull-to-refresh spin once the catalog settles (min 400ms so
+  // it never just flickers), success or error alike.
+  useEffect(() => {
+    if (!refreshing || catalogLoading) return;
+    const t = setTimeout(() => setRefreshing(false), 400);
+    return () => clearTimeout(t);
+  }, [refreshing, catalogLoading]);
 
   /** The user's interest collection — the first interest matching a real
       collection becomes the default collection spotlighted on Home.
@@ -472,7 +487,18 @@ export default function Home() {
           </View>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.text}
+              colors={[colors.text]}
+              progressBackgroundColor={colors.surface}
+            />
+          }
+        >
           <Text style={[styles.greeting, { color: colors.text }]}>
             {greeting}
           </Text>
