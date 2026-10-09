@@ -155,7 +155,7 @@ export default function SettingsHub() {
         <MenuRow
           icon={icon("cube-outline")}
           title="Order History"
-          subtitle="Coming soon"
+          subtitle="Track orders, view details & tracking"
           onPress={() => router.push("/settings/order-history")}
         />
 

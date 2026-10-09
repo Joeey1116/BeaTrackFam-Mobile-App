@@ -134,7 +134,12 @@ export default function OrderHistory() {
             {freshLocal.map((o: OrderReceipt) => (
               <Pressable
                 key={o.id}
-                onPress={() => router.push(`/settings/order/${o.id}`)}
+                onPress={() =>
+                  router.push({
+                    pathname: "/settings/order/[id]",
+                    params: { id: o.id },
+                  })
+                }
                 style={[
                   styles.card,
                   { backgroundColor: colors.surface, borderColor: colors.border },
@@ -142,7 +147,7 @@ export default function OrderHistory() {
               >
                 <View style={styles.cardMain}>
                   <Text style={[styles.cardTitle, { color: colors.text }]}>
-                    Order #{o.id.replace(/^local-/, "").slice(0, 8).toUpperCase()}
+                    Order #{(o.id.split("/").pop() ?? o.id).slice(0, 10).toUpperCase()}
                   </Text>
                   <Text style={[styles.cardSub, { color: colors.textMuted }]}>
                     {formatDate(o.placedAt)} · {o.itemCount}{" "}
