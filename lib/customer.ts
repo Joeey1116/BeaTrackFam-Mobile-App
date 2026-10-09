@@ -342,7 +342,7 @@ const CUSTOMER_QUERY = `
           province
           country
           zip
-          phone
+          phoneNumber
         }
       }
       orders(first: 20) {
@@ -411,7 +411,7 @@ export async function fetchCustomer(
         province: a.province ?? null,
         country: a.country ?? null,
         zip: a.zip ?? null,
-        phone: a.phone ?? null,
+        phone: a.phoneNumber ?? null,
       })),
       orders: (c.orders?.nodes ?? []).map((o: any) => ({
         id: String(o.id ?? ""),
@@ -440,13 +440,13 @@ const ORDER_DETAIL_RICH = `
       name
       processedAt
       totalPrice { amount currencyCode }
-      subtotalPrice { amount currencyCode }
-      totalShippingPrice { amount currencyCode }
+      subtotal { amount currencyCode }
+      totalShipping { amount currencyCode }
       totalTax { amount currencyCode }
       fulfillmentStatus
       financialStatus
       shippingAddress {
-        id firstName lastName address1 address2 city province country zip phone
+        id firstName lastName address1 address2 city province country zip phoneNumber
       }
       lineItems(first: 50) {
         nodes {
@@ -455,7 +455,7 @@ const ORDER_DETAIL_RICH = `
           variantTitle
           quantity
           image { url }
-          currentPrice { amount currencyCode }
+          price { amount currencyCode }
         }
       }
       fulfillments(first: 10) {
@@ -498,8 +498,8 @@ function mapOrderDetail(o: any): CustomerOrderDetail {
     name: String(o.name ?? ""),
     processedAt: String(o.processedAt ?? ""),
     totalPrice: money(o.totalPrice) ?? { amount: "0", currencyCode: "USD" },
-    subtotalPrice: money(o.subtotalPrice),
-    totalShippingPrice: money(o.totalShippingPrice),
+    subtotalPrice: money(o.subtotal),
+    totalShippingPrice: money(o.totalShipping),
     totalTax: money(o.totalTax),
     fulfillmentStatus: o.fulfillmentStatus ?? null,
     financialStatus: o.financialStatus ?? null,
@@ -514,7 +514,7 @@ function mapOrderDetail(o: any): CustomerOrderDetail {
           province: o.shippingAddress.province ?? null,
           country: o.shippingAddress.country ?? null,
           zip: o.shippingAddress.zip ?? null,
-          phone: o.shippingAddress.phone ?? null,
+          phone: o.shippingAddress.phoneNumber ?? null,
         }
       : null,
     lineItems: (o.lineItems?.nodes ?? []).map((li: any) => ({

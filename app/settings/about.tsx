@@ -187,7 +187,7 @@ export default function About() {
         </View>
 
         <Text style={[styles.version, { color: colors.textDim }]}>
-          BeaTrackFam 11.0.6 (Build 1106)
+          BeaTrackFam 11.0.7 (Build 1107)
         </Text>
       </ScrollView>
     </View>
