@@ -257,6 +257,14 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
           )}
         </View>
 
+        {/* Guest entry sits directly under the primary CTA — visible
+            without scrolling. Store reviewers (and shoppers) must
+            never read this screen as a login wall; Google Play
+            rejected v1206 for exactly that. */}
+        <View style={styles.guestWrap}>
+          <OutlineButton label="Shop as Guest" onPress={onGuest} />
+        </View>
+
         <View style={styles.dividerRow}>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <Text style={[styles.dividerText, { color: colors.textDim }]}>
@@ -281,10 +289,6 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
           above, it&apos;s the same BeaTrackFam account: your profile,
           addresses, and orders stay together by email.
         </Text>
-
-        <View style={styles.guestWrap}>
-          <OutlineButton label="Shop as Guest" onPress={onGuest} />
-        </View>
 
         <View style={styles.switchWrap}>
           <Text style={[styles.switchText, { color: colors.textMuted }]}>
