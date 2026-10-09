@@ -31,6 +31,7 @@ import { Radius, Spacing } from "../../constants/theme";
 import { formatMoney, useShop } from "../../store/shop";
 import type { OrderReceipt } from "../../lib/accounts";
 import {
+  clearSession,
   getStoredSession,
   refreshSessionCustomer,
   startLogin,
@@ -190,6 +191,34 @@ export default function OrderHistory() {
         )}
 
         <SectionLabel text="YOUR ORDERS" />
+        {session?.customer ? (
+          <View
+            style={[
+              styles.accountCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <Ionicons name="person-circle-outline" size={22} color={colors.text} />
+            <View style={styles.accountMain}>
+              <Text style={[styles.accountEmail, { color: colors.text }]}>
+                Signed in as {session.customer.email ?? "your Shopify account"}
+              </Text>
+              <Text style={[styles.accountNote, { color: colors.textDim }]}>
+                Your BeaTrackFam app account is separate — these are the orders
+                Shopify has for this email.
+              </Text>
+            </View>
+            <Pressable
+              onPress={async () => {
+                await clearSession();
+                setSession(null);
+              }}
+              hitSlop={8}
+            >
+              <Text style={[styles.signOut, { color: colors.text }]}>Sign out</Text>
+            </Pressable>
+          </View>
+        ) : null}
         {loading ? (
           <ActivityIndicator color={colors.text} style={styles.spinner} />
         ) : session ? (
@@ -221,7 +250,9 @@ export default function OrderHistory() {
                     {formatMoney(o.totalPrice)}
                   </Text>
                   <Text style={[styles.cardStatus, { color: colors.textMuted }]}>
-                    {fulfillLabel(o.fulfillmentStatus)}
+                    {o.cancelledAt
+                      ? "Cancelled"
+                      : fulfillLabel(o.fulfillmentStatus)}
                   </Text>
                 </View>
                 <Ionicons
@@ -262,6 +293,10 @@ export default function OrderHistory() {
               Enter your email on Shopify&apos;s secure sign-in page — Shopify sends
               you a one-time code, and your orders, statuses, and tracking
               numbers show up right here. We never see your password.
+            </Text>
+            <Text style={[styles.signinNote, { color: colors.textDim }]}>
+              Note: your BeaTrackFam app account is separate — Order History
+              shows the orders Shopify has for the email you sign in with here.
             </Text>
             {error ? <Text style={styles.error}>{error}</Text> : null}
             {signingIn ? (
@@ -316,6 +351,19 @@ const styles = StyleSheet.create({
   },
   signinTitle: { fontSize: 18, fontWeight: "800", textAlign: "center" },
   signinSub: { fontSize: 14, lineHeight: 20, textAlign: "center" },
+  signinNote: { fontSize: 12, lineHeight: 17, textAlign: "center" },
+  accountCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+  },
+  accountMain: { flex: 1, gap: 2 },
+  accountEmail: { fontSize: 14, fontWeight: "700" },
+  accountNote: { fontSize: 12, lineHeight: 16 },
+  signOut: { fontSize: 13, fontWeight: "700" },
   error: { color: "#E5484D", fontSize: 13, textAlign: "center" },
   note: { textAlign: "center", fontSize: 13, marginTop: Spacing.md },
 });

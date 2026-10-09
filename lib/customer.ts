@@ -54,6 +54,7 @@ export interface CustomerAddress {
 }
 
 export interface CustomerOrder {
+  cancelledAt?: string | null;
   id: string;
   name: string;
   processedAt: string;
@@ -350,6 +351,7 @@ const CUSTOMER_QUERY = `
           id
           name
           processedAt
+          cancelledAt
           totalPrice { amount currencyCode }
           fulfillmentStatus
         }
@@ -417,6 +419,7 @@ export async function fetchCustomer(
         id: String(o.id ?? ""),
         name: String(o.name ?? ""),
         processedAt: String(o.processedAt ?? ""),
+        cancelledAt: o.cancelledAt ?? null,
         totalPrice: {
           amount: String(o.totalPrice?.amount ?? "0"),
           currencyCode: String(o.totalPrice?.currencyCode ?? "USD"),
@@ -439,6 +442,7 @@ const ORDER_DETAIL_RICH = `
       id
       name
       processedAt
+      cancelledAt
       totalPrice { amount currencyCode }
       subtotal { amount currencyCode }
       totalShipping { amount currencyCode }
@@ -474,6 +478,7 @@ const ORDER_DETAIL_BASIC = `
       id
       name
       processedAt
+      cancelledAt
       totalPrice { amount currencyCode }
       fulfillmentStatus
       financialStatus
@@ -497,6 +502,7 @@ function mapOrderDetail(o: any): CustomerOrderDetail {
     id: String(o.id ?? ""),
     name: String(o.name ?? ""),
     processedAt: String(o.processedAt ?? ""),
+    cancelledAt: o.cancelledAt ?? null,
     totalPrice: money(o.totalPrice) ?? { amount: "0", currencyCode: "USD" },
     subtotalPrice: money(o.subtotal),
     totalShippingPrice: money(o.totalShipping),

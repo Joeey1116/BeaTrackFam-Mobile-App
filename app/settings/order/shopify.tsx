@@ -187,7 +187,9 @@ export default function ShopifyOrderDetail() {
     );
   }
 
-  const cancelled = (order.fulfillmentStatus ?? "").toUpperCase() === "CANCELLED";
+  const cancelled =
+    Boolean(order.cancelledAt) ||
+    (order.fulfillmentStatus ?? "").toUpperCase() === "CANCELLED";
   const fulfilled = (order.fulfillmentStatus ?? "").toUpperCase() === "FULFILLED";
   const canRequestCancel = !cancelled && !fulfilled;
   const tracking = order.fulfillments.flatMap((f) => f.tracking);
@@ -205,7 +207,7 @@ export default function ShopifyOrderDetail() {
             ]}
           >
             <Text style={[styles.chipText, { color: colors.text }]}>
-              {fulfillLabel(order.fulfillmentStatus)}
+              {cancelled ? "Cancelled" : fulfillLabel(order.fulfillmentStatus)}
             </Text>
           </View>
           {financialLabel(order.financialStatus) ? (
