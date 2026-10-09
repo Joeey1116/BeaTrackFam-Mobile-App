@@ -189,12 +189,12 @@ export async function startLogin(): Promise<LoginResult> {
       scopes: ["openid", "email", "customer-account-api:full"],
       responseType: AuthSession.ResponseType.Code,
       usePKCE: true,
-      // Always make Shopify ask who is signing in. Without this, a live
-      // Shopify browser session silently signs the same account back in —
-      // fine until someone wants to switch emails (the whole reason for the
-      // Sign out button). Verified Oct 9: Shopify accepts prompt=login on
-      // this client and keeps the email sign-in form.
-      extraParams: { prompt: "login" },
+      // Note: Shopify's authorize only documents prompt=none — a live
+      // browser session returns a code silently by design, and there is
+      // no parameter that forces the email form (prompt=login was tried
+      // in 11.0.10 and Shopify ignored it). Switching emails works
+      // because Sign out ends the server session (see clearSession);
+      // with no session left, this flow lands on the email form.
     });
     const discovery = {
       authorizationEndpoint: authorizeEndpoint(),
@@ -607,6 +607,31 @@ export async function getStoredSession(): Promise<CustomerSession | null> {
 }
 
 export async function clearSession(): Promise<void> {
+  // End the Shopify server session too, so the next "Continue with email"
+  // actually shows Shopify's email form instead of silently signing the
+  // same account back in from the live browser session. Shopify supports
+  // calling the end_session_endpoint as a plain API for mobile clients
+  // (GET with id_token_hint returns 200 JSON instead of redirecting —
+  // shopify.dev Customer Account API reference, "Logging out / Mobile
+  // client"; verified live Oct 9 2026). Nothing opens on screen. Best
+  // effort: local sign-out proceeds even if this call fails.
+  try {
+    const raw = await AsyncStorage.getItem(SESSION_KEY);
+    const idToken = raw
+      ? (JSON.parse(raw) as CustomerSession).idToken
+      : undefined;
+    if (idToken) {
+      const logoutUrl =
+        `https://shopify.com/authentication/${CUSTOMER_API_CONFIG.shopId}/logout` +
+        `?id_token_hint=${encodeURIComponent(idToken)}` +
+        `&post_logout_redirect_uri=${encodeURIComponent(resolveRedirectUri())}`;
+      await fetch(logoutUrl, {
+        headers: { "user-agent": "BeaTrackFam-App" },
+      }).catch(() => {});
+    }
+  } catch {
+    // ignore — signing out locally must never be blocked
+  }
   await AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
 }
 
