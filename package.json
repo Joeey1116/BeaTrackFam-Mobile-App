@@ -1,6 +1,6 @@
 {
   "name": "@joeey1116/beatrackfam-mobile-app",
-  "version": "10.0.2",
+  "version": "10.1.0",
   "main": "expo-router/entry",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"

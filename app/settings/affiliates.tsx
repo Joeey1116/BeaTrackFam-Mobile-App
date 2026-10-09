@@ -26,7 +26,7 @@ import { Radius, Spacing } from "../../constants/theme";
 const AFFILIATE_APP_STORE_URL =
   "https://apps.apple.com/us/app/pro-affiliates/id1489316147";
 const AFFILIATE_APP_PLAY_URL =
-  "https://play.google.com/store/search?q=Pro%20Affiliates&c=apps";
+  "https://play.google.com/store/apps/details?id=com.goaffpro.app";
 
 const LOGIN_STEPS = [
   "Download and open the Pro Affiliates app.",
