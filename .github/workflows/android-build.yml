@@ -100,6 +100,20 @@ jobs:
       - name: Point the release build at the keystore
         run: python3 .github/scripts/android-signing.py android/app/build.gradle
 
+      - name: Raise Gradle memory for R8
+        # R8 minification OOM'd release builds on the default heap
+        # (run #7: Java heap space in minifyReleaseWithR8). The
+        # prebuilt project ships its own gradle.properties; bump the
+        # daemon ceiling before bundling.
+        run: |
+          touch android/gradle.properties
+          if grep -q '^org.gradle.jvmargs' android/gradle.properties; then
+            sed -i 's|^org.gradle.jvmargs.*|org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m|' android/gradle.properties
+          else
+            echo 'org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m' >> android/gradle.properties
+          fi
+          grep '^org.gradle.jvmargs' android/gradle.properties
+
       - name: Build the release bundle (AAB)
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
