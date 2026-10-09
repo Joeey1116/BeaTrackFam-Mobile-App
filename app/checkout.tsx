@@ -665,9 +665,9 @@ export default function Checkout() {
                   style={[
                     styles.countryChip,
                     {
-                      borderColor: selected ? colors.text : colors.border,
+                      borderColor: selected ? colors.button : colors.border,
                       backgroundColor: selected
-                        ? colors.surfaceRaised
+                        ? colors.button
                         : "transparent",
                     },
                   ]}
@@ -675,7 +675,10 @@ export default function Checkout() {
                   <Text
                     style={[
                       styles.countryLabel,
-                      { color: colors.text, fontWeight: selected ? "800" : "400" },
+                      {
+                        color: selected ? colors.buttonText : colors.text,
+                        fontWeight: selected ? "800" : "400",
+                      },
                     ]}
                   >
                     {c.code}
@@ -821,9 +824,15 @@ export default function Checkout() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   content: { padding: Spacing.md, paddingBottom: Spacing.xl },
-  pageTitle: { fontSize: 24, fontWeight: "800", marginBottom: Spacing.md },
+  pageTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    lineHeight: 30,
+    letterSpacing: -0.3,
+    marginBottom: Spacing.md,
+  },
   card: {
-    borderRadius: Radius.lg,
+    borderRadius: Radius.xl,
     padding: Spacing.md,
     marginBottom: Spacing.md,
   },
@@ -836,16 +845,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  secureTitle: { fontSize: 16, fontWeight: "800" },
+  secureTitle: { fontSize: 15, fontWeight: "700", lineHeight: 20 },
   secureSub: { fontSize: 13, marginTop: 2 },
   secureBody: { fontSize: 13, lineHeight: 19, marginTop: Spacing.sm },
-  sectionTitle: { fontSize: 16, fontWeight: "800", marginVertical: Spacing.sm },
+  sectionTitle: {
+    fontSize: 19,
+    fontWeight: "800",
+    lineHeight: 24,
+    marginVertical: Spacing.sm,
+  },
   savedAddrBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
     borderWidth: 1,
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     padding: Spacing.sm,
     marginBottom: Spacing.sm,
   },
@@ -855,7 +869,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: Spacing.sm,
     borderWidth: 1,
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     padding: Spacing.sm,
     marginBottom: Spacing.sm,
   },
@@ -869,7 +883,7 @@ const styles = StyleSheet.create({
   countryRow: { flexDirection: "row", gap: Spacing.sm, marginBottom: Spacing.sm },
   countryChip: {
     borderWidth: 1.5,
-    borderRadius: Radius.md,
+    borderRadius: Radius.pill,
     paddingVertical: 10,
     paddingHorizontal: 18,
   },
@@ -881,8 +895,8 @@ const styles = StyleSheet.create({
   },
   promoField: { flex: 1 },
   promoButton: {
-    borderRadius: Radius.md,
-    paddingHorizontal: 18,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 20,
     paddingVertical: 13,
   },
   promoButtonText: { fontSize: 14, fontWeight: "800" },
@@ -902,8 +916,8 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 14 },
   summaryValue: { fontSize: 14, fontWeight: "600" },
   divider: { height: 1, marginVertical: Spacing.sm },
-  totalLabel: { fontSize: 16, fontWeight: "800" },
-  totalValue: { fontSize: 16, fontWeight: "800" },
+  totalLabel: { fontSize: 18, fontWeight: "800" },
+  totalValue: { fontSize: 18, fontWeight: "800" },
   emptyNote: { fontSize: 13, marginTop: Spacing.sm },
   payRow: {
     flexDirection: "row",

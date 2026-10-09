@@ -417,18 +417,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: Spacing.sm,
-    borderRadius: Radius.md,
-    paddingVertical: 15,
+    borderRadius: Radius.pill,
+    paddingVertical: 17,
     paddingHorizontal: Spacing.lg,
   },
   primaryButtonLabel: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   outlineButton: {
     borderWidth: 1,
-    borderRadius: Radius.md,
-    paddingVertical: 14,
+    borderRadius: Radius.pill,
+    paddingVertical: 15,
     alignItems: "center",
   },
   outlineButtonLabel: {
@@ -446,13 +446,13 @@ const styles = StyleSheet.create({
   fieldInputRow: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     paddingHorizontal: Spacing.md,
   },
   fieldInput: {
     flex: 1,
     fontSize: 15,
-    paddingVertical: 13,
+    paddingVertical: 14,
   },
   menuRow: {
     flexDirection: "row",

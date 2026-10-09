@@ -7,7 +7,7 @@ import { useTheme } from "../../components/ThemeProvider";
 import { LogoEye } from "../../components/LogoEye";
 import { OutlineButton, PrimaryButton } from "../../components/ui";
 import { useShop } from "../../store/shop";
-import { Spacing } from "../../constants/theme";
+import { Spacing, Type } from "../../constants/theme";
 
 export default function Welcome() {
   const { colors } = useTheme();
@@ -27,10 +27,10 @@ export default function Welcome() {
     >
       <View style={styles.center}>
         <LogoEye size={96} />
-        <Text style={[styles.title, { color: colors.text }]}>
+        <Text style={[styles.title, Type.display, { color: colors.text }]}>
           Welcome to{"\n"}BeaTrackFam
         </Text>
-        <Text style={[styles.body, { color: colors.textMuted }]}>
+        <Text style={[styles.body, Type.body, { color: colors.textMuted }]}>
           Sign in to save your favorites, sync your profile, and get
           exclusive access to limited drops.
         </Text>
@@ -81,12 +81,10 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "800",
     textAlign: "center",
     marginBottom: Spacing.sm,
   },
-  body: { fontSize: 15, textAlign: "center", lineHeight: 22 },
+  body: { textAlign: "center" },
   ctaWrap: { paddingHorizontal: Spacing.lg },
   gap: { height: Spacing.sm },
   guestWrap: { alignItems: "center", paddingTop: Spacing.md },

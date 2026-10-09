@@ -24,7 +24,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "./ThemeProvider";
 import { OutlineButton, PrimaryButton, ScreenHeader, TextField } from "./ui";
 import { useShop } from "../store/shop";
-import { Radius, Spacing } from "../constants/theme";
+import { Radius, Spacing, Type } from "../constants/theme";
 import { isResetAvailable } from "../lib/passwordReset";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -46,7 +46,7 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
 
   const isSignup = mode === "signup";
   const title = isSignup ? "Create Account" : "Log In";
-  const heading = isSignup ? "Join the Fam" : "Welcome Back";
+  const heading = isSignup ? "Create account" : "Welcome back";
 
   const onContinue = async () => {
     setError(null);
@@ -126,8 +126,10 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={[styles.title, { color: colors.text }]}>{heading}</Text>
-        <Text style={[styles.subtitle, { color: colors.textMuted }]}>
+        <Text style={[styles.title, Type.display, { color: colors.text }]}>
+          {heading}
+        </Text>
+        <Text style={[styles.subtitle, Type.body, { color: colors.textMuted }]}>
           {isSignup
             ? "Create your BeaTrackFam account to save addresses, track orders and check out faster."
             : "Log in to your BeaTrackFam account."}{" "}
@@ -154,30 +156,6 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
               order with live tracking — all in one place.
             </Text>
           </View>
-        </View>
-
-        {shopifyBusy ? (
-          <View style={[styles.busy, { backgroundColor: colors.button }]}>
-            <ActivityIndicator color={colors.buttonText} />
-          </View>
-        ) : (
-          <OutlineButton
-            label="Continue with Shopify"
-            onPress={onShopify}
-          />
-        )}
-        <Text style={[styles.shopifyNote, { color: colors.textDim }]}>
-          Uses the email from your Shopify orders — no separate password
-          to remember. Whether you continue with Shopify or sign up with
-          email below, it&apos;s the same BeaTrackFam account: your
-          profile, addresses, and orders stay together by email.
-        </Text>
-        <View style={styles.dividerRow}>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <Text style={[styles.dividerText, { color: colors.textDim }]}>
-            or with email
-          </Text>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
         </View>
 
         {isSignup && (
@@ -275,14 +253,38 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
               <ActivityIndicator color={colors.buttonText} />
             </View>
           ) : (
-            <PrimaryButton
-              label={isSignup ? "Create Account" : "Log In"}
-              onPress={onContinue}
-            />
+            <PrimaryButton label="Continue" onPress={onContinue} />
           )}
         </View>
 
-        <OutlineButton label="Shop as Guest" onPress={onGuest} />
+        <View style={styles.dividerRow}>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <Text style={[styles.dividerText, { color: colors.textDim }]}>
+            or
+          </Text>
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        </View>
+
+        {shopifyBusy ? (
+          <View style={[styles.busy, { backgroundColor: colors.button }]}>
+            <ActivityIndicator color={colors.buttonText} />
+          </View>
+        ) : (
+          <OutlineButton
+            label="Continue with Shopify"
+            onPress={onShopify}
+          />
+        )}
+        <Text style={[styles.shopifyNote, { color: colors.textDim }]}>
+          Uses the email from your Shopify orders — no separate password
+          to remember. Whether you continue with Shopify or use email
+          above, it&apos;s the same BeaTrackFam account: your profile,
+          addresses, and orders stay together by email.
+        </Text>
+
+        <View style={styles.guestWrap}>
+          <OutlineButton label="Shop as Guest" onPress={onGuest} />
+        </View>
 
         <View style={styles.switchWrap}>
           <Text style={[styles.switchText, { color: colors.textMuted }]}>
@@ -314,12 +316,12 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   content: { padding: Spacing.lg, paddingTop: Spacing.sm },
-  title: { fontSize: 26, fontWeight: "800", marginBottom: 4 },
-  subtitle: { fontSize: 14, lineHeight: 20, marginBottom: Spacing.lg },
+  title: { marginBottom: Spacing.sm },
+  subtitle: { marginBottom: Spacing.lg },
   notice: {
     flexDirection: "row",
     gap: Spacing.sm,
-    borderRadius: 12,
+    borderRadius: Radius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.md,
     alignItems: "flex-start",
@@ -327,11 +329,12 @@ const styles = StyleSheet.create({
   noticeText: { flex: 1, fontSize: 13, lineHeight: 18 },
   ctaWrap: { marginBottom: Spacing.md, marginTop: Spacing.xs },
   busy: {
-    borderRadius: 12,
-    paddingVertical: 15,
+    borderRadius: Radius.pill,
+    paddingVertical: 17,
     alignItems: "center",
     justifyContent: "center",
   },
+  guestWrap: { marginTop: Spacing.md },
   switchWrap: {
     flexDirection: "row",
     justifyContent: "center",
@@ -353,7 +356,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: Spacing.sm,
     borderWidth: 1,
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.md,
     alignItems: "flex-start",

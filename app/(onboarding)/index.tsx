@@ -19,7 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useTheme } from "../../components/ThemeProvider";
 import { PrimaryButton } from "../../components/ui";
-import { Spacing } from "../../constants/theme";
+import { Spacing, Type } from "../../constants/theme";
 
 const { width } = Dimensions.get("window");
 
@@ -85,13 +85,15 @@ export default function Onboarding() {
             <View
               style={[
                 styles.iconCircle,
-                { backgroundColor: colors.accent + "22" },
+                { backgroundColor: colors.surface },
               ]}
             >
-              <Ionicons name={s.icon} size={56} color={colors.accent} />
+              <Ionicons name={s.icon} size={56} color={colors.text} />
             </View>
-            <Text style={[styles.title, { color: colors.text }]}>{s.title}</Text>
-            <Text style={[styles.body, { color: colors.textMuted }]}>
+            <Text style={[styles.title, Type.headline, { color: colors.text }]}>
+              {s.title}
+            </Text>
+            <Text style={[styles.body, Type.body, { color: colors.textMuted }]}>
               {s.body}
             </Text>
           </View>
@@ -147,15 +149,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   title: {
-    fontSize: 26,
-    fontWeight: "800",
     textAlign: "center",
     marginBottom: Spacing.sm,
   },
   body: {
-    fontSize: 15,
     textAlign: "center",
-    lineHeight: 22,
   },
   dots: {
     flexDirection: "row",

@@ -18,7 +18,7 @@ import {
 import { ProductImage } from "../components/ProductImage";
 import { formatMoney, useShop } from "../store/shop";
 import type { CartLine } from "../data/mock";
-import { Radius, Spacing } from "../constants/theme";
+import { Radius, Spacing, Type } from "../constants/theme";
 
 function CartRow({ line }: { line: CartLine }) {
   const { colors } = useTheme();
@@ -28,7 +28,10 @@ function CartRow({ line }: { line: CartLine }) {
     <View style={[styles.row, { backgroundColor: colors.surface }]}>
       <ProductImage image={line.product.images[0] ?? null} size={72} rounded={Radius.md} iconSize={28} />
       <View style={styles.rowMain}>
-        <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={2}>
+        <Text
+          style={[Type.title, { color: colors.text }]}
+          numberOfLines={2}
+        >
           {line.product.title}
         </Text>
         <Text style={[styles.rowVariant, { color: colors.textMuted }]}>
@@ -131,14 +134,13 @@ const styles = StyleSheet.create({
   list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.md },
   row: {
     flexDirection: "row",
-    borderRadius: Radius.lg,
-    padding: Spacing.sm,
+    borderRadius: Radius.xl,
+    padding: Spacing.md,
     gap: Spacing.md,
   },
   rowMain: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 14, fontWeight: "600", lineHeight: 18 },
   rowVariant: { fontSize: 13 },
-  rowPrice: { fontSize: 15, fontWeight: "800", marginTop: 2 },
+  rowPrice: { fontSize: 16, fontWeight: "800", marginTop: 2 },
   stepperRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -162,7 +164,7 @@ const styles = StyleSheet.create({
   },
   totalLabel: { fontSize: 15 },
   totalValue: { fontSize: 15, fontWeight: "600" },
-  grandLabel: { fontSize: 17, fontWeight: "800" },
-  grandValue: { fontSize: 17, fontWeight: "800" },
+  grandLabel: { fontSize: 18, fontWeight: "800" },
+  grandValue: { fontSize: 18, fontWeight: "800" },
   footer: { padding: Spacing.md, borderTopWidth: 1 },
 });

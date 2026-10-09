@@ -17,7 +17,7 @@ import { NativeDropdown } from "../../components/NativeDropdown";
 import { ProductGallery } from "../../components/ProductGallery";
 import { Reviews } from "../../components/Reviews";
 import { useShop } from "../../store/shop";
-import { Radius, Spacing } from "../../constants/theme";
+import { Radius, Spacing, Type } from "../../constants/theme";
 import { fetchProductMedia, type ProductMedia } from "../../lib/storefront";
 import { isReviewsConfigured } from "../../lib/reviews";
 
@@ -139,10 +139,11 @@ export default function ProductDetails() {
     <View style={[styles.safe, { backgroundColor: colors.background }]}>
       <ScreenHeader title="Product Details" align="center" showBack right={<CartButton />} />
       <ScrollView contentContainerStyle={styles.content}>
-        <View>
+        <View style={styles.galleryBleed}>
           <ProductGallery
             images={galleryImages}
             variantImageUrl={variantImageUrl}
+            rounded={0}
           />
           <Pressable
             onPress={() => toggleWishlist(product.id)}
@@ -158,10 +159,10 @@ export default function ProductDetails() {
           </Pressable>
         </View>
 
-        <Text style={[styles.title, { color: colors.text }]}>
+        <Text style={[styles.title, Type.headline, { color: colors.text }]}>
           {product.title}
         </Text>
-        <Text style={[styles.vendor, { color: colors.textMuted }]}>
+        <Text style={[styles.vendor, Type.caption, { color: colors.textMuted }]}>
           {product.vendor}
         </Text>
         <View style={styles.priceRow}>
@@ -188,7 +189,7 @@ export default function ProductDetails() {
           const useDropdown = opt.values.length > 5;
           return (
             <View key={opt.name}>
-              <Text style={[styles.optionLabel, { color: colors.text }]}>
+              <Text style={[styles.optionLabel, Type.title, { color: colors.text }]}>
                 {opt.name}:{" "}
                 <Text style={styles.optionValue}>
                   {effectiveSelected[opt.name] ?? ""}
@@ -224,9 +225,9 @@ export default function ProductDetails() {
                         style={[
                           styles.chip,
                           {
-                            borderColor: isSelected ? colors.text : colors.border,
+                            borderColor: isSelected ? colors.button : colors.border,
                             backgroundColor: isSelected
-                              ? colors.surface
+                              ? colors.button
                               : "transparent",
                           },
                         ]}
@@ -234,7 +235,10 @@ export default function ProductDetails() {
                         <Text
                           style={[
                             styles.chipText,
-                            { color: colors.text, fontWeight: isSelected ? "800" : "600" },
+                            {
+                              color: isSelected ? colors.buttonText : colors.text,
+                              fontWeight: isSelected ? "800" : "600",
+                            },
                           ]}
                         >
                           {val}
@@ -249,7 +253,7 @@ export default function ProductDetails() {
         })}
 
         {product.description.length > 0 && (
-          <Text style={[styles.description, { color: colors.textMuted }]}>
+          <Text style={[styles.description, Type.body, { color: colors.textMuted }]}>
             {product.description}
           </Text>
         )}
@@ -270,7 +274,9 @@ export default function ProductDetails() {
       >
         {purchasable && (
           <View style={styles.qtyRow}>
-            <Text style={[styles.qtyLabel, { color: colors.text }]}>Quantity</Text>
+            <Text style={[styles.qtyLabel, Type.title, { color: colors.text }]}>
+              Quantity
+            </Text>
             <View style={[styles.stepper, { borderColor: colors.border }]}>
               <Pressable
                 onPress={() => setQuantity((q) => Math.max(1, q - 1))}
@@ -339,28 +345,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 20, fontWeight: "800", marginTop: Spacing.sm },
-  vendor: { fontSize: 14, marginTop: 4 },
+  galleryBleed: { marginHorizontal: -Spacing.md },
+  title: { marginTop: Spacing.md },
+  vendor: { marginTop: 4 },
   priceRow: {
     flexDirection: "row",
     alignItems: "baseline",
     gap: Spacing.sm,
     marginTop: Spacing.sm,
   },
-  price: { fontSize: 22, fontWeight: "800" },
-  compare: { fontSize: 15, textDecorationLine: "line-through" },
+  price: { fontSize: 26, fontWeight: "800", letterSpacing: -0.3 },
+  compare: { fontSize: 16, textDecorationLine: "line-through" },
   unavailable: { fontSize: 13, fontWeight: "600", marginTop: Spacing.xs },
-  optionLabel: { fontSize: 15, fontWeight: "700", marginTop: Spacing.lg },
+  optionLabel: { marginTop: Spacing.lg },
   optionValue: { fontWeight: "400" },
   chipRow: { gap: Spacing.sm, marginTop: Spacing.sm, paddingRight: Spacing.md },
   chip: {
     borderWidth: 1.5,
-    borderRadius: Radius.md,
+    borderRadius: Radius.pill,
     paddingVertical: 10,
     paddingHorizontal: 18,
   },
   chipText: { fontSize: 14 },
-  description: { fontSize: 14, lineHeight: 21, marginTop: Spacing.lg },
+  description: { marginTop: Spacing.lg },
   footer: { padding: Spacing.md, borderTopWidth: 1, gap: Spacing.sm },
   qtyRow: {
     flexDirection: "row",
