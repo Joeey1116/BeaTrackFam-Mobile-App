@@ -13,6 +13,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../components/ThemeProvider";
 import { LogoEye } from "../../components/LogoEye";
 import { ScreenHeader } from "../../components/ui";
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 import { Radius, Spacing } from "../../constants/theme";
 
 const SOCIALS: { label: string; handle: string; icon: string; url: string }[] = [
@@ -187,7 +189,7 @@ export default function About() {
         </View>
 
         <Text style={[styles.version, { color: colors.textDim }]}>
-          BeaTrackFam 12.2.3 (Build 1207)
+          BeaTrackFam {Constants.expoConfig?.version ?? "—"} (Build {Platform.OS === "ios" ? Constants.expoConfig?.ios?.buildNumber : Constants.expoConfig?.android?.versionCode})
         </Text>
       </ScrollView>
     </View>

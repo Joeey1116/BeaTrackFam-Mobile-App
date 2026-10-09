@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Constants from "expo-constants";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useTheme } from "../../components/ThemeProvider";
 import { ScreenHeader, SectionLabel, SettingRow } from "../../components/ui";
@@ -255,7 +256,7 @@ export default function AppSettings() {
         <SettingRow
           icon={icon("information-circle-outline")}
           title="Version"
-          subtitle="12.2.3 (Build 1207)"
+          subtitle={`${Constants.expoConfig?.version ?? "—"} (Build ${Platform.OS === "ios" ? Constants.expoConfig?.ios?.buildNumber : Constants.expoConfig?.android?.versionCode})`}
         />
         <SettingRow
           icon={icon("phone-portrait-outline")}
