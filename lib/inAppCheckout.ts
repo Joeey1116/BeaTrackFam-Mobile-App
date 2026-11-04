@@ -73,6 +73,8 @@ export interface InAppQuoteLine {
 
 export interface InAppTotals {
   subtotal: number;
+  /** Discount off the subtotal (affiliate / store code), dollars. */
+  discount: number;
   shipping: number;
   tax: number;
   total: number;
@@ -90,6 +92,7 @@ export interface InAppQuote {
   totals: InAppTotals;
   totalsCents: {
     subtotal: number;
+    discount: number;
     shipping: number;
     tax: number;
     total: number;
@@ -121,6 +124,21 @@ export interface ShippingRateOption {
 export function currencyForCountry(countryCode: string): string {
   const c = (countryCode || "US").toUpperCase();
   return c === "CA" ? "CAD" : c === "MX" ? "MXN" : "USD";
+}
+
+/**
+ * Normalize a stored country value to a ship-to code (US | CA | MX).
+ * Saved addresses carry free text ("United States" is the address
+ * form's default), which matches no country chip — returning null for
+ * those keeps the screen in its honest "no country picked" state
+ * instead of silently treating it as US.
+ */
+export function normalizeShipCountry(value: string | null | undefined): string | null {
+  const v = (value ?? "").trim().toUpperCase();
+  if (v === "US" || v === "USA" || v === "UNITED STATES") return "US";
+  if (v === "CA" || v === "CAN" || v === "CANADA") return "CA";
+  if (v === "MX" || v === "MEX" || v === "MEXICO") return "MX";
+  return null;
 }
 
 const centsToDollars = (cents: number): number => cents / 100;
@@ -218,6 +236,7 @@ export async function validatePromoCodes(
     rejectedCodes,
     totals: {
       subtotal,
+      discount: 0,
       shipping: 0,
       tax: 0,
       total: subtotal,
@@ -306,6 +325,10 @@ function toQuote(
 ): InAppQuote {
   const subtotalCents = created.subtotal_cents;
   const shippingCents = updated?.shipping_cents ?? 0;
+  // The backend returns subtotal BEFORE discount and discount_cents
+  // separately; dropping the discount here is what hid the discount
+  // line on the screen while the total still reflected it.
+  const discountCents = updated?.discount_cents ?? created.discount_cents;
   const totalCents = updated?.total_cents ?? created.total_cents;
   return {
     orderId: created.order_id,
@@ -315,6 +338,7 @@ function toQuote(
     currency: created.currency,
     totals: {
       subtotal: centsToDollars(subtotalCents),
+      discount: centsToDollars(discountCents),
       shipping: centsToDollars(shippingCents),
       tax: 0,
       total: centsToDollars(totalCents),
@@ -322,6 +346,7 @@ function toQuote(
     },
     totalsCents: {
       subtotal: subtotalCents,
+      discount: discountCents,
       shipping: shippingCents,
       tax: 0,
       total: totalCents,

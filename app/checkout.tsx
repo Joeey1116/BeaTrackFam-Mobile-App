@@ -37,6 +37,7 @@ import { isInAppCheckoutEnabled } from "../lib/checkoutConfig";
 import {
   currencyForCountry,
   getShippingRates,
+  normalizeShipCountry,
   quoteInAppCheckout,
   confirmInAppOrder,
   validatePromoCodes,
@@ -125,7 +126,11 @@ export default function Checkout() {
   const [province, setProvince] = useState(initialAddress?.province ?? "");
   const [zip, setZip] = useState(initialAddress?.zip ?? "");
   const [country, setCountry] = useState<string>(
-    initialAddress?.country ?? "US"
+    // Only a real US/CA/MX code counts as picked. A saved address
+    // carries free text ("United States" is the address form's
+    // default) — that used to fall through as an unpicked country
+    // while the rates list still showed every zone's rates.
+    normalizeShipCountry(initialAddress?.country) ?? ""
   );
   const [phone, setPhone] = useState(profile.phone || "");
   const [busy, setBusy] = useState(false);
@@ -142,17 +147,24 @@ export default function Checkout() {
     quote: InAppQuote;
   } | null>(null);
   const [rates, setRates] = useState<ShippingRateOption[]>([]);
-  const [ratesLoading, setRatesLoading] = useState(true);
+  const [ratesLoading, setRatesLoading] = useState(
+    normalizeShipCountry(initialAddress?.country) !== null
+  );
   const [selectedRateId, setSelectedRateId] = useState<string | null>(null);
 
-  /** Country change (chip or saved address): drop the stale rates and
-   * re-fetch below. Loading is set here — in an event handler — not
-   * inside the fetch effect (lint: set-state-in-effect). */
+  /** Country change (chip or saved address): drop the stale rates,
+   * the stale rate selection, and the stale quote, and re-fetch
+   * below. Loading is set here — in an event handler — not inside
+   * the fetch effect (lint: set-state-in-effect). No fetch runs
+   * for an unpicked country, so loading is false in that case. */
   const onCountryChange = (code: string) => {
-    setCountry(code);
+    const normalized = normalizeShipCountry(code) ?? "";
+    setCountry(normalized);
     setPrepared(null);
+    setPromoTotals(null);
+    setSelectedRateId(null);
     setRates([]);
-    setRatesLoading(true);
+    setRatesLoading(normalized !== "");
   };
 
   const currency = currencyForCountry(country);
@@ -266,6 +278,7 @@ export default function Checkout() {
     if (!city.trim()) return "Enter your city.";
     if (!province.trim()) return "Enter your state or province.";
     if (!zip.trim()) return "Enter your ZIP / postal code.";
+    if (!country) return "Select a country for shipping.";
     return null;
   };
 
@@ -446,19 +459,23 @@ export default function Checkout() {
     await presentAndFinish(quote, buyer);
   };
 
-  // Shipping options follow the ship-to country. The first option
-  // (Standard) is the default; changing it re-quotes (the prepared
-  // key includes the rate id).
+  // Shipping options follow the ship-to country — and ONLY that
+  // country. With no country picked there are no rates at all (the
+  // server falls back to every zone's rates for an unrecognized
+  // country, which is how all four rates used to show before any
+  // chip was selected). Nothing is pre-selected: the shopper taps
+  // a rate, which re-quotes (the prepared key includes the rate id).
   useEffect(() => {
+    // No country picked: no fetch at all (the handler above already
+    // cleared rates, selection, and loading for this state).
+    if (!country) return;
     let cancelled = false;
     getShippingRates(country, currency, promoCodes.includes("FREESHIP"))
       .then((options) => {
         if (cancelled) return;
         setRates(options);
         setSelectedRateId((prev) =>
-          prev && options.some((o) => o.id === prev)
-            ? prev
-            : (options[0]?.id ?? null)
+          prev && options.some((o) => o.id === prev) ? prev : null
         );
       })
       .catch(() => {
@@ -481,6 +498,7 @@ export default function Checkout() {
     : "";
   React.useEffect(() => {
     if (!prepKey || intentLines.length === 0) return;
+    if (!selectedRateId) return;
     if (validate() !== null) return;
     let cancelled = false;
     const timer = setTimeout(() => {
@@ -529,6 +547,26 @@ export default function Checkout() {
   };
 
   const subtotalDollars = subtotalCents / 100;
+
+  /**
+   * Summary shipping tracks the SELECTED rate instantly. The quoted
+   * shipping lags the tap (900ms prefetch, and never when the address
+   * is still incomplete) — without this override the summary kept
+   * showing the previous rate's price after a change. The discount
+   * and the server quote are untouched; the next quote replaces
+   * these display values with server truth, and the PaymentSheet
+   * charge always comes from the server quote at pay time.
+   */
+  const selectedRate = rates.find((r) => r.id === selectedRateId) ?? null;
+  const displayShipping = promoTotals
+    ? selectedRate
+      ? selectedRate.priceCents / 100
+      : promoTotals.shipping
+    : null;
+  const displayTotal =
+    promoTotals && displayShipping !== null
+      ? promoTotals.total - promoTotals.shipping + displayShipping
+      : null;
 
   return (
     <View style={[styles.safe, { backgroundColor: colors.background }]}>
@@ -779,7 +817,11 @@ export default function Checkout() {
           Shipping
         </Text>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
-          {ratesLoading ? (
+          {!country ? (
+            <Text style={[styles.emptyNote, { color: colors.textDim }]}>
+              Select a country above to see shipping options.
+            </Text>
+          ) : ratesLoading ? (
             <Text style={[styles.emptyNote, { color: colors.textDim }]}>
               Loading shipping options…
             </Text>
@@ -899,25 +941,25 @@ export default function Checkout() {
               {fmtDollars(subtotalDollars)}
             </Text>
           </View>
-          {promoTotals && subtotalDollars - promoTotals.subtotal > 0.004 ? (
+          {promoTotals && promoTotals.discount > 0.004 ? (
             <View style={styles.summaryRow}>
               <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>
                 Discount
               </Text>
               <Text style={[styles.summaryValue, { color: colors.text }]}>
-                −{fmtDollars(subtotalDollars - promoTotals.subtotal)}
+                −{fmtDollars(promoTotals.discount)}
               </Text>
             </View>
           ) : null}
-          {promoTotals ? (
+          {promoTotals && displayShipping !== null ? (
             <View style={styles.summaryRow}>
               <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>
                 Shipping
               </Text>
               <Text style={[styles.summaryValue, { color: colors.text }]}>
-                {promoTotals.shipping === 0
+                {displayShipping === 0
                   ? "Free"
-                  : fmtDollars(promoTotals.shipping)}
+                  : fmtDollars(displayShipping)}
               </Text>
             </View>
           ) : null}
@@ -935,8 +977,8 @@ export default function Checkout() {
           <View style={styles.summaryRow}>
             <Text style={[styles.totalLabel, { color: colors.text }]}>Total</Text>
             <Text style={[styles.totalValue, { color: colors.text }]}>
-              {promoTotals
-                ? fmtDollars(promoTotals.total)
+              {displayTotal !== null
+                ? fmtDollars(displayTotal)
                 : fmtDollars(subtotalDollars)}
             </Text>
           </View>
