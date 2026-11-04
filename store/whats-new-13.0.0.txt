@@ -1,0 +1,7 @@
+- The shop now runs on our own BeaTrackFam storefront - same products, same prices, no more Shopify in the middle
+- Checkout stays right in the app with Stripe - cards, Apple Pay and Google Pay, no browser redirect
+- Sign in with your BeaTrackFam site account and see your real order history with live status and tracking
+- Saved addresses you add in the app now sync to your site account too
+- Ask Bea and your Inbox now answer from your real site orders, and live chat connects to the shop's own chat
+- Inbox order updates, guest order lookup, affiliate hub and all your favorites carry over as before
+Questions or concerns? Email us at contact@beatrackfam.info
