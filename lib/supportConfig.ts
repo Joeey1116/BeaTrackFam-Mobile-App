@@ -1,9 +1,9 @@
 /**
  * Support contact config — where the Fam can be reached, and when.
  *
- * Human help runs through Shopify Inbox: customers chat from the
- * storefront chat widget (app/shop-chat.tsx) and the Fam reads and
- * replies in the Shopify Inbox app. Business hours come from the
+ * Human help runs through the shop site's own chat: customers chat
+ * from the storefront chat panel (app/shop-chat.tsx) and the Fam reads
+ * and replies there. Business hours come from the
  * BeaTrackFam Facebook Page (Staten Island, America/New_York):
  *   Mon–Thu 9 AM–10 PM · Fri 9 AM–3 PM · Sat closed · Sun 10 AM–10 PM
  * Keep this file in sync if the Page hours change.
@@ -11,7 +11,7 @@
 
 export const SUPPORT_EMAIL = "contact@beatrackfam.info";
 
-/** Storefront home — the Shopify Inbox chat widget lives here. */
+/** Storefront home — the site's own chat panel lives here. */
 export const SHOP_CHAT_URL = "https://beatrackfam.info";
 
 export const SUPPORT_TIMEZONE = "America/New_York";
@@ -189,7 +189,7 @@ export function hoursSummary(): string {
  */
 export function supportStatusLine(now: Date = new Date()): string {
   if (!HOURS_CONFIGURED) {
-    return "We read every chat in Shopify Inbox — send us a message anytime.";
+    return "We read every message — send us one anytime.";
   }
   if (isOpenNow(now)) {
     return "We're online now — open the chat below and say hi.";

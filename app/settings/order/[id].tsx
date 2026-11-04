@@ -344,7 +344,7 @@ export default function OrderDetail() {
   const onCancel = () => {
     Alert.alert(
       "Request cancellation?",
-      "Shopify doesn't let apps cancel an order directly, so this opens an email to us with your order number. Send it and we'll cancel it and refund you from our side — your order stays active until you get our confirmation email.",
+      "We can't cancel an order directly from the app, so this opens an email to us with your order number. Send it and we'll cancel it and refund you from our side — your order stays active until you get our confirmation email.",
       [
         { text: "Keep Order", style: "cancel" },
         {

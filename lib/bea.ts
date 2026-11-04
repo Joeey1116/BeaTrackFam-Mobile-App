@@ -6,8 +6,9 @@
  * order status/tracking from the customer's real orders, and policy
  * answers from the shared FAQ data (data/faq.ts). Anything she can't
  * answer from that data falls back to the best-matching FAQ entries
- * and a human handoff: live chat through Shopify Inbox (app/shop-chat)
- * or email. She never invents products, prices, orders or promo codes.
+ * and a human handoff: live chat through the shop site's own chat
+ * (app/shop-chat) or email. She never invents products, prices, orders
+ * or promo codes.
  */
 import {
   formatCents,
@@ -233,27 +234,27 @@ function orderNumberReply(ctx: BeaContext, digits: string): BeaReply {
 
 /**
  * "Talk to a human" — hands off to a real person from the Fam.
- * Primary path is live chat: it opens the storefront chat widget
- * (app/shop-chat), which lands in the Shopify Inbox app where the Fam
- * reads and replies. Email stays one tap behind it. Copy follows the
- * posted business hours (lib/supportConfig).
+ * Primary path is live chat: it opens the shop site's own chat panel
+ * (app/shop-chat), where the Fam reads and replies. Email stays one
+ * tap behind it. Copy follows the posted business hours
+ * (lib/supportConfig).
  */
 function humanReply(): BeaReply {
   if (HOURS_CONFIGURED && isOpenNow()) {
     return {
-      text: "You got it — a real human from the Fam, not a bot wall. We're online right now, so open the live chat and say hi. It lands in our Shopify Inbox, which means even if we step away mid-chat, your message won't get lost.",
+      text: "You got it — a real human from the Fam, not a bot wall. We're online right now, so open the live chat and say hi. It lands in our shop chat, which means even if we step away mid-chat, your message won't get lost.",
       actions: [CHAT_ACTION, HUMAN_ACTION],
     };
   }
   if (HOURS_CONFIGURED) {
     const back = nextOpeningLabel();
     return {
-      text: `You got it — a real human from the Fam, not a bot wall. We're offline at the moment${back ? ` — we're back ${back}` : ""}. Open the live chat and drop your message anyway: it lands in our Shopify Inbox and we answer every single one when we're back. Email works too.`,
+      text: `You got it — a real human from the Fam, not a bot wall. We're offline at the moment${back ? ` — we're back ${back}` : ""}. Open the live chat and drop your message anyway: it lands in our shop chat and we answer every single one when we're back. Email works too.`,
       actions: [CHAT_ACTION, HUMAN_ACTION],
     };
   }
   return {
-    text: "You got it — a real human from the Fam, not a bot wall. Open the live chat and say hi — we read every chat in our Shopify Inbox and answer personally. Email works too.",
+    text: "You got it — a real human from the Fam, not a bot wall. Open the live chat and say hi — we read every chat in our shop chat and answer personally. Email works too.",
     actions: [CHAT_ACTION, HUMAN_ACTION],
   };
 }
@@ -288,7 +289,7 @@ export function answerBea(raw: string, ctx: BeaContext): BeaReply {
 
   if (has(text, "promo", "discount", "coupon", "promo code", "code", "sale", "deal", "offer")) {
     return {
-      text: "If you have a promo code, enter it at checkout — Shopify checks it and applies it right there before you pay. New codes go out through the Inbox bell and our announcements, so keep an eye there. I can't generate codes, but I can help you find something worth using one on.",
+      text: "If you have a promo code, enter it at checkout — it applies right there before you pay. New codes go out through the Inbox bell and our announcements, so keep an eye there. I can't generate codes, but I can help you find something worth using one on.",
       actions: [
         { label: "Shop the catalog", route: { pathname: "/(tabs)/collections" } },
         HUMAN_ACTION,

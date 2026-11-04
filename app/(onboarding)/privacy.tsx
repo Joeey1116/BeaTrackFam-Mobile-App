@@ -77,7 +77,7 @@ export default function Privacy() {
       body="BeaTrackFam respects your privacy. You can choose whether to allow the app to track activity for a more personalized experience."
       bullets={[
         { icon: "eye-off-outline", text: "We never sell your personal data" },
-        { icon: "lock-closed-outline", text: "Checkout stays secure with Shopify" },
+        { icon: "lock-closed-outline", text: "Checkout stays secure with Stripe" },
         { icon: "options-outline", text: "Change your mind anytime in Settings" },
       ]}
       primaryLabel="Continue"

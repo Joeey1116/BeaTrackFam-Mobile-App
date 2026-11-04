@@ -29,6 +29,7 @@ import {
 } from "../data/mock";
 import {
   addOrderReceipt as persistOrderReceipt,
+  addSiteAddress,
   clearLocalProfile,
   getLocalProfile,
   saveLocalProfile,
@@ -319,6 +320,15 @@ export function ShopProvider({ children }: { children: ReactNode }) {
         ? profile.addresses.map((a) => ({ ...a, isDefault: false }))
         : profile.addresses;
       await persistProfile({ ...profile, addresses: [...addresses, entry] });
+      // Best-effort: mirror the new address to the site account when a
+      // session token exists. Local save already succeeded; a site
+      // failure must never surface here. Edits/deletes are not
+      // mirrored (no site address id is tracked locally).
+      try {
+        await addSiteAddress(entry);
+      } catch {
+        // Site copy is a bonus — the local address still saves.
+      }
     },
     [profile, persistProfile]
   );

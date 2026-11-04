@@ -100,7 +100,7 @@ export const FAQS: FaqEntry[] = [
   },
   {
     q: "Is my payment information safe?",
-    a: "Yes. Checkout happens on Shopify's secure servers — cards, Apple Pay and Google Pay are all processed by Shopify. We never see or store your card numbers.",
+    a: "Yes. Checkout runs through Stripe's secure payment sheet — cards, Apple Pay and Google Pay are all processed by Stripe. We never see or store your card numbers.",
     topics: ["payments"],
     keywords: ["payment", "pay", "card", "safe", "secure", "security"],
   },

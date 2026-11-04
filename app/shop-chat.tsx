@@ -1,12 +1,10 @@
 /**
- * Chat with us — live human help through Shopify Inbox.
+ * Chat with us — live human help through the shop site's own chat.
  *
- * There's no Shopify Inbox SDK for React Native, so this loads the
- * storefront (where the Shopify Inbox chat widget lives) in a WebView.
- * Anything a customer sends lands in the Shopify Inbox app, where the
- * Fam reads and replies. Best effort is made to pop the chat open on
- * arrival; if that doesn't take, the hint bar points at the bubble.
- * Business hours come from lib/supportConfig.ts.
+ * The Cloudflare storefront (beatrackfam.info) carries its own chat
+ * panel, so this loads the storefront home in a WebView and best-effort
+ * pops that panel open on arrival; if that doesn't take, the hint bar
+ * points at the bubble. Business hours come from lib/supportConfig.ts.
  */
 import React, { useRef, useState } from "react";
 import {
@@ -33,10 +31,10 @@ import {
 } from "../lib/supportConfig";
 
 /**
- * Best-effort: open the Shopify Inbox widget once the storefront has
- * loaded. The widget may be a host-page button or an iframe we can
- * only nudge — every step is guarded so a miss just leaves the page
- * as-is (the bubble stays tappable).
+ * Best-effort: open the storefront's own chat panel once the page has
+ * loaded. The panel is opened by the site's chat bubble button
+ * ([data-chat-open] / .btf-chat-btn); every step is guarded so a miss
+ * just leaves the page as-is (the bubble stays tappable).
  */
 const AUTO_OPEN_JS = `
 (function () {
@@ -45,43 +43,12 @@ const AUTO_OPEN_JS = `
     var timer = setInterval(function () {
       attempts += 1;
       try {
-        // Host-page chat buttons (some themes/apps render one).
-        var hostBtn = document.querySelector(
-          'button[aria-label*="chat" i], a[aria-label*="chat" i],' +
-          '[data-shopify-chat], .shopify-chat-button, #chat-button'
+        var chatBtn = document.querySelector(
+          '[data-chat-open], .btf-chat-btn,' +
+          'button[aria-label*="chat" i], a[aria-label*="chat" i]'
         );
-        if (hostBtn) {
-          hostBtn.click();
-          clearInterval(timer);
-          return;
-        }
-        // The Shopify Inbox widget iframe.
-        var frames = document.querySelectorAll("iframe");
-        for (var i = 0; i < frames.length; i++) {
-          var f = frames[i];
-          var hint = ((f.title || "") + " " + (f.id || "") + " " +
-            (f.className || "") + " " + (f.getAttribute("src") || "")
-          ).toLowerCase();
-          if (hint.indexOf("chat") === -1 && hint.indexOf("inbox") === -1) {
-            continue;
-          }
-          try {
-            // Same-origin case: tap the bubble button inside.
-            var doc = f.contentDocument;
-            if (doc) {
-              var inner = doc.querySelector("button");
-              if (inner) {
-                inner.click();
-                clearInterval(timer);
-                return;
-              }
-            }
-          } catch (e) { /* cross-origin — fall through to nudge */ }
-          try {
-            f.contentWindow.postMessage({ type: "shopifyChat:open" }, "*");
-            f.contentWindow.postMessage("openChat", "*");
-          } catch (e) { /* no-op */ }
-          try { f.click(); } catch (e) { /* no-op */ }
+        if (chatBtn) {
+          chatBtn.click();
           clearInterval(timer);
           return;
         }

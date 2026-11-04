@@ -152,7 +152,7 @@ export default function CustomerService() {
 
   // Live chat subtitle follows the posted business hours.
   const chatSubtitle = !HOURS_CONFIGURED
-    ? "We read every chat in Shopify Inbox"
+    ? "We read every message — send one anytime"
     : isOpenNow()
       ? "We're online now — say hi"
       : (() => {
