@@ -205,7 +205,7 @@ export default function Profile() {
                 Payment Methods
               </Text>
               <Text style={[styles.cardBody, { color: colors.textMuted }]}>
-                Cards you save at checkout are stored securely by Shopify. We
+                Cards you save at checkout are stored securely by Stripe. We
                 never see or store your card numbers.
               </Text>
             </View>

@@ -1,49 +1,126 @@
 /**
- * BeaTrackFam app accounts — device-local accounts.
+ * BeaTrackFam app accounts — the site's D1 customer_accounts is the
+ * single source of truth; this module is the app's client for it plus
+ * the device-local session/profile/receipt cache.
  *
- * Why this exists: the Shopify Customer Account API profile fetch kept
- * failing on real devices ("Couldn't load your profile from Shopify"),
- * which blocked sign-in entirely. App accounts don't depend on Shopify:
- * sign-up / sign-in / profile / addresses / order receipts all work
- * offline-first on the device.
+ * AUTH (contract with the backend agent — read before touching):
+ * - POST /api/account/login and /api/account/signup return
+ *   { ok, account: { email, name }, session_token } and every
+ *   /api/account/* call additionally accepts
+ *   `Authorization: Bearer <session_token>`.
+ * - The token is stored in AsyncStorage and sent on every account
+ *   call. React Native fetch does not persist the site's
+ *   HttpOnly session cookie, so cookie-only auth is NOT sufficient
+ *   for the app — if the token is missing, authed calls 401 and the
+ *   screens fall back to local receipts + guest lookup.
+ * - Live status (Nov 4, 2026): the token field IS live — login/signup
+ *   JSON returns session_token and /api/account/* accepts the Bearer
+ *   header (negative paths curl-verified: bad password -> 401,
+ *   garbage Bearer -> 401 on /me and /orders). The positive
+ *   round-trip (real sign-in returning a token) is NOT yet verified
+ *   because creating a real prod customer account for the test needs
+ *   parent approval — see the rebuild report.
  *
- * Honesty contract (do not weaken):
- * - Accounts are REGISTERED with the BeaTrackFam accounts worker
- *   (workers/accounts, lib/accountSync.ts) whenever the phone is
- *   online: delete the app, reinstall it, log in with the same email
- *   and you're back in. The phone keeps a local copy as its session
- *   store and offline fallback — profile extras (addresses,
- *   interests, receipts) live in that local copy and in Shopify, not
- *   in the registry; the registry holds name + email + password hash.
- * - If the worker is unreachable or not deployed yet, everything
- *   still works device-locally exactly as before, and pre-registry
- *   accounts register themselves on their owner's next login.
- * - Passwords are stored as salted SHA-256 hashes, never plaintext.
- * - Orders are linked to Shopify at CHECKOUT TIME: the buyer's name,
- *   email, phone and shipping address are attached to the Shopify
- *   Storefront cart as buyer identity (see lib/storefront.ts), so the
- *   Shopify order carries the customer's contact details and Shopify
- *   associates the order with that customer email. The app also keeps a
- *   local order receipt per account for order history.
+ * What lives where:
+ * - Site: email + name + password hash (PBKDF2, server-side) +
+ *   addresses + orders. The app never sees or stores a password hash.
+ * - Device: the session (which account is signed in), the editable
+ *   profile copy (addresses, interests, socials, avatar), local
+ *   checkout receipts, and guest/site orders linked to the account.
+ *   Profile edits save locally immediately and push the name to the
+ *   site best-effort; new addresses are posted to the site
+ *   best-effort at add time (edits/deletes of site addresses are not
+ *   tracked — site address ids are not stored locally — so an edited
+ *   or deleted local address does not propagate; that is a known gap,
+ *   not silent sync).
+ *
+ * Passwords: the site requires at least 8 characters. Old device-local
+ * accounts (salted SHA-256 hashes from the retired KV registry era)
+ * are NOT migrated by copying hashes — the site hashes with PBKDF2
+ * and the two schemes are incompatible (see
+ * docs/accounts-pbkdf2-finding.md). On upgrade, any stored local
+ * password hash/salt is stripped from the device the first time the
+ * store is read; affected users sign in with their site password or
+ * use the site's email-link reset.
+ *
+ * Guest checkout stays: guests never need an account, and any order
+ * (guest or signed-in) can be looked up by order number + checkout
+ * email via POST /api/guest-order-lookup.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Crypto from "expo-crypto";
-import type { LocalProfile } from "./customer";
-import { EMPTY_PROFILE } from "./customer";
-import {
-  changeRemotePassword,
-  deleteRemoteAccount,
-  isAccountSyncConfigured,
-  loginRemoteAccount,
-  registerRemoteAccount,
-  remoteAccountExists,
-  syncRemotePassword,
-} from "./accountSync";
+import { SITE_BACKEND_URL } from "./checkoutConfig";
 
 const ACCOUNTS_KEY = "beatrackfam-app-accounts-v1";
 const SESSION_KEY = "beatrackfam-app-account-session-v1";
+const TOKEN_KEY = "beatrackfam-site-session-token-v1";
 
-/* ---------------------------------- Types ---------------------------------- */
+/* --------------------------- Local profile types --------------------------- */
+/* Moved here from the deleted lib/customer.ts — same shapes, same key. */
+
+export interface SocialHandles {
+  instagram: string;
+  tiktok: string;
+  facebook: string;
+  x: string;
+}
+
+export interface LocalAddress {
+  id: string;
+  label: string;
+  name: string;
+  street: string;
+  street2: string;
+  city: string;
+  province: string;
+  zip: string;
+  country: string;
+  phone: string;
+  isDefault: boolean;
+}
+
+export interface LocalProfile {
+  addresses: LocalAddress[];
+  interests: string[];
+  socials: SocialHandles;
+  avatarUri: string | null;
+  firstName: string;
+  lastName: string;
+  phone: string;
+}
+
+const PROFILE_KEY = "beatrackfam-profile-local";
+
+export const EMPTY_PROFILE: LocalProfile = {
+  addresses: [],
+  interests: [],
+  socials: { instagram: "", tiktok: "", facebook: "", x: "" },
+  avatarUri: null,
+  firstName: "",
+  lastName: "",
+  phone: "",
+};
+
+export async function getLocalProfile(): Promise<LocalProfile> {
+  try {
+    const raw = await AsyncStorage.getItem(PROFILE_KEY);
+    if (!raw) return EMPTY_PROFILE;
+    return { ...EMPTY_PROFILE, ...(JSON.parse(raw) as Partial<LocalProfile>) };
+  } catch {
+    return EMPTY_PROFILE;
+  }
+}
+
+export async function saveLocalProfile(profile: LocalProfile): Promise<void> {
+  await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile)).catch(
+    () => {}
+  );
+}
+
+export async function clearLocalProfile(): Promise<void> {
+  await AsyncStorage.removeItem(PROFILE_KEY).catch(() => {});
+}
+
+/* ------------------------------ Receipt types ------------------------------ */
 
 /** One line item snapshot stored on an order receipt. */
 export interface ReceiptItem {
@@ -59,7 +136,7 @@ export interface ReceiptItem {
 export type OrderStatus = "completed" | "cancelled" | "cancellation-requested";
 
 export interface OrderReceipt {
-  /** Shopify order id (gid) when known, otherwise a local id. */
+  /** Site order number (BTF-YYYYMMDD-XXXX) when known, else a local id. */
   id: string;
   /** ISO timestamp of when the app recorded the completed checkout. */
   placedAt: string;
@@ -72,64 +149,270 @@ export interface OrderReceipt {
   items: ReceiptItem[];
 }
 
+/** A site order snapshot linked to this app account from Order History. */
+export interface LinkedSiteOrder {
+  number: string;
+  status: string;
+  totalAmount: string;
+  currencyCode: string;
+  placedAt: string;
+  email: string;
+}
+
 export interface AppAccount {
   id: string;
   email: string;
-  passwordHash: string;
-  salt: string;
+  name: string;
   createdAt: string;
   profile: LocalProfile;
   orders: OrderReceipt[];
-  /**
-   * How this account signs in. "shopify" accounts were created through
-   * Continue with Shopify — they have no usable password (the stored
-   * hash is of a random throwaway value). Undefined = "password"
-   * (every pre-11.0.12 account).
-   */
-  authProvider?: "password" | "shopify";
-  /** Shopify Customer Account API customer id, once linked. */
-  shopifyCustomerId?: string;
-  /** Shopify orders bookmarked onto this account from Order History. */
-  linkedShopifyOrders?: LinkedShopifyOrder[];
+  /** Site orders bookmarked onto this account from Order History. */
+  linkedSiteOrders?: LinkedSiteOrder[];
 }
 
 export type AccountResult =
   | { ok: true; account: AppAccount }
   | { ok: false; reason: string };
 
-/** A Shopify order snapshot linked to this app account from Order History. */
-export interface LinkedShopifyOrder {
-  id: string;
-  name: string;
-  processedAt: string;
-  totalAmount: string;
-  currencyCode: string;
+/* ------------------------------- Site types -------------------------------- */
+
+export interface SiteOrderItem {
+  handle: string;
+  title: string;
+  variantLabel: string;
+  qty: number;
+  unitPriceCents: number;
+  lineTotalCents: number;
+}
+
+/** One order row from GET /api/account/me. */
+export interface SiteOrder {
+  number: string;
   status: string;
-  email: string;
+  totalCents: number;
+  /** Server-formatted total, e.g. "$19.99". */
+  total: string;
+  createdAt: string;
+  items: SiteOrderItem[];
 }
 
-/* --------------------------------- Hashing --------------------------------- */
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+/**
+ * One order row from GET /api/account/orders (the order-LIST endpoint,
+ * newest first, max 50). NOTE: item_count is order_items ROWS (lines),
+ * not summed quantities — history screens must show it as a line
+ * count, never as an item quantity.
+ */
+export interface SiteOrderSummary {
+  number: string;
+  createdAt: string;
+  totalCents: number;
+  status: string;
+  /** Line count (order_items rows), NOT summed quantities. */
+  itemCount: number;
 }
 
-async function hashPassword(password: string, salt: string): Promise<string> {
-  return Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    `${salt}::${password}`
-  );
+export interface SiteOrderDetail {
+  number: string;
+  status: string;
+  printifyStatus: string | null;
+  totalCents: number;
+  subtotalCents: number;
+  shippingCents: number | null;
+  taxCents: number;
+  discountCents: number;
+  discountCode: string | null;
+  createdAt: string;
+  customerName: string | null;
+  shippingAddress: {
+    address1?: string;
+    address2?: string;
+    city?: string;
+    state?: string;
+    postal?: string;
+    country?: string;
+  };
+  orderNotes: string | null;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
+  items: SiteOrderItem[];
 }
 
-/* --------------------------------- Storage --------------------------------- */
+export interface SiteAccountView {
+  account: { email: string; name: string };
+  orders: SiteOrder[];
+  addresses: Array<Record<string, unknown>>;
+  newsletterSubscribed: boolean;
+}
+
+export interface SiteAffiliate {
+  code: string;
+  link: string;
+  rate: string;
+  rateBasisPoints: number;
+  totalEarningsCents: number;
+  totalEarnings: string;
+  orders: Array<{
+    order_number: string;
+    date: string;
+    commission_cents: number;
+    commission: string;
+    status: string;
+  }>;
+  payouts: Array<{
+    amount_cents: number;
+    amount: string;
+    status: string;
+    created_at: string;
+    note: string;
+  }>;
+  name: string | null;
+  paymentMethod: string | null;
+  paymentHandle: string | null;
+}
+
+/** "$19.99" from integer cents — the site API speaks cents only. */
+export function formatCents(cents: number | null | undefined): string {
+  return `$${((cents ?? 0) / 100).toFixed(2)}`;
+}
+
+/** Human label for a site order status. */
+export function siteOrderStatusLabel(status: string): string {
+  switch ((status ?? "").toLowerCase()) {
+    case "cancelled":
+      return "Cancelled";
+    case "refunded":
+      return "Refunded";
+    case "delivered":
+      return "Delivered";
+    case "shipped":
+      return "Shipped";
+    case "paid":
+    case "printify_pending":
+    case "printify_held_awaiting_merchant_payment":
+    case "in_production":
+      return "Processing";
+    case "pending_payment":
+      return "Payment pending";
+    default:
+      return "Processing";
+  }
+}
+
+/* ------------------------------ Site API client ---------------------------- */
+
+async function getSessionToken(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function hasSessionToken(): Promise<boolean> {
+  return (await getSessionToken()) !== null;
+}
+
+async function setSessionToken(token: string | null): Promise<void> {
+  try {
+    if (token) await AsyncStorage.setItem(TOKEN_KEY, token);
+    else await AsyncStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Session still works locally; authed calls will 401 until set.
+  }
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getSessionToken();
+  return token
+    ? { Authorization: `Bearer ${token}` }
+    : {};
+}
+
+type SiteCallResult<T> =
+  | { ok: true; data: T; status: number }
+  | { ok: false; error: string; status: number };
+
+async function siteCall<T>(
+  path: string,
+  opts?: { method?: string; body?: Record<string, unknown>; authed?: boolean }
+): Promise<SiteCallResult<T>> {
+  const method = opts?.method ?? (opts?.body ? "POST" : "GET");
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  if (opts?.authed !== false) {
+    Object.assign(headers, await authHeaders());
+  }
+  let res: Response;
+  try {
+    res = await fetch(`${SITE_BACKEND_URL}${path}`, {
+      method,
+      headers,
+      body: opts?.body ? JSON.stringify(opts.body) : undefined,
+    });
+  } catch {
+    return {
+      ok: false,
+      error: "Couldn't reach the store. Check your connection and try again.",
+      status: 0,
+    };
+  }
+  const data = (await res.json().catch(() => ({}))) as T & {
+    error?: string;
+    session_token?: string;
+  };
+  if (!res.ok || (data as { error?: string }).error) {
+    return {
+      ok: false,
+      error:
+        (data as { error?: string }).error ||
+        "Something went wrong. Please try again.",
+      status: res.status,
+    };
+  }
+  return { ok: true, data, status: res.status };
+}
+
+/** Stores the session token when the backend returns one (contract). */
+async function captureToken(data: { session_token?: string }): Promise<void> {
+  if (typeof data.session_token === "string" && data.session_token) {
+    await setSessionToken(data.session_token);
+  }
+}
+
+/* --------------------------- Local account storage -------------------------- */
+
+type StoredAccount = AppAccount & Record<string, unknown>;
+
+let credentialStripWritten = false;
 
 async function readAccounts(): Promise<Record<string, AppAccount>> {
   try {
     const raw = await AsyncStorage.getItem(ACCOUNTS_KEY);
     if (!raw) return {};
-    return JSON.parse(raw) as Record<string, AppAccount>;
+    const parsed = JSON.parse(raw) as Record<string, StoredAccount>;
+    const out: Record<string, AppAccount> = {};
+    let hadCredentials = false;
+    for (const [key, value] of Object.entries(parsed)) {
+      const {
+        passwordHash: _ph,
+        salt: _salt,
+        authProvider: _ap,
+        shopifyCustomerId: _sc,
+        linkedShopifyOrders: _ls,
+        ...rest
+      } = value;
+      if (_ph !== undefined || _salt !== undefined) hadCredentials = true;
+      out[key] = sanitizeAccount(rest as AppAccount);
+    }
+    // One-time upgrade hygiene: old local password hashes must not
+    // linger on the device once the site is the credential authority.
+    if (hadCredentials && !credentialStripWritten) {
+      credentialStripWritten = true;
+      void writeAccounts(out);
+    }
+    return out;
   } catch {
     return {};
   }
@@ -138,7 +421,11 @@ async function readAccounts(): Promise<Record<string, AppAccount>> {
 async function writeAccounts(
   accounts: Record<string, AppAccount>
 ): Promise<void> {
-  await AsyncStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts)).catch(
+  const stripped: Record<string, AppAccount> = {};
+  for (const [key, value] of Object.entries(accounts)) {
+    stripped[key] = sanitizeAccount(value);
+  }
+  await AsyncStorage.setItem(ACCOUNTS_KEY, JSON.stringify(stripped)).catch(
     () => {}
   );
 }
@@ -149,23 +436,29 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function sanitizeAccount(account: AppAccount): AppAccount {
   return {
-    ...account,
+    id: account.id,
+    email: account.email,
+    name: account.name ?? "",
+    createdAt: account.createdAt,
     profile: { ...EMPTY_PROFILE, ...(account.profile ?? {}) },
     orders: Array.isArray(account.orders) ? account.orders : [],
+    linkedSiteOrders: Array.isArray(account.linkedSiteOrders)
+      ? account.linkedSiteOrders
+      : [],
   };
+}
+
+function splitName(name: string): { firstName: string; lastName: string } {
+  const [firstName, ...rest] = name.trim().split(/\s+/);
+  return { firstName: firstName ?? "", lastName: rest.join(" ") };
 }
 
 /* ------------------------------- Public API -------------------------------- */
 
-/** True when an account already exists for this email (case-insensitive). */
-export async function accountExists(email: string): Promise<boolean> {
-  const accounts = await readAccounts();
-  return Boolean(accounts[normalizeEmail(email)]);
-}
-
 /**
- * Creates a new device-local account. `seedProfile` (the guest's
- * device-local profile, if any) is copied in so nothing is lost.
+ * Creates a site account, then the local session for it. `seedProfile`
+ * (the guest's device-local profile, if any) is copied in so nothing
+ * is lost. The site requires passwords of at least 8 characters.
  */
 export async function createAccount(input: {
   name: string;
@@ -181,66 +474,53 @@ export async function createAccount(input: {
   if (name.length < 2) {
     return { ok: false, reason: "Enter your name." };
   }
-  if (input.password.length < 6) {
+  if (input.password.length < 8) {
     return {
       ok: false,
-      reason: "Choose a password with at least 6 characters.",
+      reason: "Choose a password with at least 8 characters.",
     };
   }
-  const accounts = await readAccounts();
-  if (accounts[email]) {
-    return {
-      ok: false,
-      reason:
-        accounts[email].authProvider === "shopify"
-          ? "This email already has an account through Shopify — use Continue with Shopify to log in."
-          : "An account with this email already exists on this device.",
-    };
-  }
-
-  // Registered before (e.g. on a phone since wiped)? Don't duplicate —
-  // logging in is the way back in.
-  if (isAccountSyncConfigured()) {
-    const existsRemotely = await remoteAccountExists(email);
-    if (existsRemotely) {
+  const res = await siteCall<{
+    account?: { email?: string; name?: string };
+    session_token?: string;
+  }>("/api/account/signup", {
+    body: { name, email, password: input.password },
+    authed: false,
+  });
+  if (!res.ok) {
+    if (res.status === 409) {
       return {
         ok: false,
         reason:
           "This email is already registered — log in instead. Your account works on any phone.",
       };
     }
+    return { ok: false, reason: res.error };
   }
-
-  const saltBytes = await Crypto.getRandomBytesAsync(16);
-  const salt = bytesToHex(saltBytes);
-  const passwordHash = await hashPassword(input.password, salt);
-
-  const [firstName, ...rest] = name.split(/\s+/);
+  await captureToken(res.data);
+  const accounts = await readAccounts();
   const seed: LocalProfile = input.seedProfile
     ? { ...EMPTY_PROFILE, ...input.seedProfile }
     : { ...EMPTY_PROFILE };
+  const { firstName, lastName } = splitName(name);
   if (!seed.firstName) seed.firstName = firstName;
-  if (!seed.lastName && rest.length) seed.lastName = rest.join(" ");
-
+  if (!seed.lastName) seed.lastName = lastName;
   const account: AppAccount = {
     id: `acct-${Date.now()}`,
     email,
-    passwordHash,
-    salt,
+    name,
     createdAt: new Date().toISOString(),
     profile: seed,
-    orders: [],
+    orders: accounts[email]?.orders ?? [],
+    linkedSiteOrders: accounts[email]?.linkedSiteOrders ?? [],
   };
   accounts[email] = account;
   await writeAccounts(accounts);
   await AsyncStorage.setItem(SESSION_KEY, account.id).catch(() => {});
-  // Register with the accounts worker so this login survives an app
-  // reinstall. Best-effort: offline sign-ups register on next login.
-  void registerRemoteAccount({ name, email, password: input.password });
   return { ok: true, account: sanitizeAccount(account) };
 }
 
-/** Signs in — registry first (works on a fresh install), device-local fallback. */
+/** Signs in against the site. Works on a fresh install by design. */
 export async function signIn(input: {
   email: string;
   password: string;
@@ -249,155 +529,45 @@ export async function signIn(input: {
   if (!EMAIL_RE.test(email)) {
     return { ok: false, reason: "Enter a valid email address." };
   }
-  const accounts = await readAccounts();
-
-  // The registry is the source of truth when it's reachable — it's
-  // what lets someone delete the app, reinstall, and just log in.
-  if (isAccountSyncConfigured()) {
-    const remote = await loginRemoteAccount({
-      email,
-      password: input.password,
-    });
-    if (remote.status === "ok") {
-      const saltBytes = await Crypto.getRandomBytesAsync(16);
-      const salt = bytesToHex(saltBytes);
-      const passwordHash = await hashPassword(input.password, salt);
-      let account = accounts[email];
-      if (account) {
-        // Keep the local copy in step with the verified password.
-        account = { ...account, salt, passwordHash };
-      } else {
-        const [firstName, ...rest] = remote.name.trim().split(/\s+/);
-        account = {
-          id: `acct-${Date.now()}`,
-          email,
-          passwordHash,
-          salt,
-          createdAt: new Date().toISOString(),
-          profile: {
-            ...EMPTY_PROFILE,
-            firstName: firstName ?? "",
-            lastName: rest.join(" "),
-          },
-          orders: [],
-        };
-      }
-      accounts[email] = account;
-      await writeAccounts(accounts);
-      await AsyncStorage.setItem(SESSION_KEY, account.id).catch(() => {});
-      return { ok: true, account: sanitizeAccount(account) };
+  const res = await siteCall<{
+    account?: { email?: string; name?: string };
+    session_token?: string;
+  }>("/api/account/login", {
+    body: { email, password: input.password },
+    authed: false,
+  });
+  if (!res.ok) {
+    if (res.status === 401) {
+      return { ok: false, reason: "Incorrect email or password." };
     }
-    if (remote.status === "wrong-password") {
-      return { ok: false, reason: "Incorrect password. Please try again." };
+    if (res.status === 429) {
+      return {
+        ok: false,
+        reason: "Too many sign-in attempts — please wait a few minutes.",
+      };
     }
-    // "no-account" (pre-registry account) or registry unreachable:
-    // fall through to the device-local account below.
+    return { ok: false, reason: res.error };
   }
-
-  const account = accounts[email];
-  if (!account) {
-    return {
-      ok: false,
-      reason: "No account found with this email on this device.",
-    };
-  }
-  const attempt = await hashPassword(input.password, account.salt);
-  if (attempt !== account.passwordHash) {
-    return {
-      ok: false,
-      reason:
-        account.authProvider === "shopify"
-          ? "This account uses Continue with Shopify — tap that button above to sign in."
-          : "Incorrect password. Please try again.",
-    };
-  }
-  await AsyncStorage.setItem(SESSION_KEY, account.id).catch(() => {});
-  // Accounts born before the registry register themselves here, so
-  // their next reinstall is a plain log-in too.
-  if (isAccountSyncConfigured()) {
-    void (async () => {
-      const exists = await remoteAccountExists(email);
-      if (exists === false) {
-        const name =
-          [account.profile.firstName, account.profile.lastName]
-            .filter(Boolean)
-            .join(" ") || email.split("@")[0];
-        await registerRemoteAccount({
-          name,
-          email,
-          password: input.password,
-        });
-      }
-    })();
-  }
-  return { ok: true, account: sanitizeAccount(account) };
-}
-
-/**
- * Continues with a verified Shopify identity (lib/customer.startLogin
- * already completed OAuth and persisted the Shopify session). One
- * account either way: an existing account with this email is linked
- * (shopifyCustomerId set, profile gaps filled from Shopify); otherwise
- * a Shopify-backed account is created with an unusable random
- * password. Shopify accounts are not registered with the accounts
- * worker — there is no password to register; Shopify is their login.
- */
-export async function signInWithShopifyCustomer(input: {
-  customer: {
-    id: string;
-    email?: string | null;
-    firstName?: string | null;
-    lastName?: string | null;
-  };
-  seedProfile?: LocalProfile;
-}): Promise<AccountResult> {
-  const email = normalizeEmail(input.customer.email ?? "");
-  if (!EMAIL_RE.test(email)) {
-    return {
-      ok: false,
-      reason: "Shopify didn't return an email address for that account.",
-    };
-  }
+  await captureToken(res.data);
   const accounts = await readAccounts();
+  const name = res.data.account?.name ?? "";
   const existing = accounts[email];
-  if (existing) {
-    const linked: AppAccount = {
-      ...existing,
-      shopifyCustomerId: input.customer.id,
-      profile: {
-        ...existing.profile,
-        firstName: existing.profile.firstName || input.customer.firstName || "",
-        lastName: existing.profile.lastName || input.customer.lastName || "",
-      },
-    };
-    accounts[email] = linked;
-    await writeAccounts(accounts);
-    await AsyncStorage.setItem(SESSION_KEY, linked.id).catch(() => {});
-    return { ok: true, account: sanitizeAccount(linked) };
-  }
-
-  const saltBytes = await Crypto.getRandomBytesAsync(16);
-  const salt = bytesToHex(saltBytes);
-  // Random unusable password: nobody can log into this account with a
-  // password; Continue with Shopify is the way in.
-  const throwaway = bytesToHex(await Crypto.getRandomBytesAsync(24));
-  const profile: LocalProfile = {
-    ...EMPTY_PROFILE,
-    ...(input.seedProfile ?? {}),
-    firstName: input.customer.firstName ?? input.seedProfile?.firstName ?? "",
-    lastName: input.customer.lastName ?? input.seedProfile?.lastName ?? "",
-  };
-  const account: AppAccount = {
-    id: `acct-${Date.now()}`,
-    email,
-    passwordHash: await hashPassword(throwaway, salt),
-    salt,
-    createdAt: new Date().toISOString(),
-    profile,
-    orders: [],
-    authProvider: "shopify",
-    shopifyCustomerId: input.customer.id,
-  };
+  const { firstName, lastName } = splitName(name);
+  const account: AppAccount = existing
+    ? { ...existing, name: name || existing.name }
+    : {
+        id: `acct-${Date.now()}`,
+        email,
+        name,
+        createdAt: new Date().toISOString(),
+        profile: {
+          ...EMPTY_PROFILE,
+          firstName,
+          lastName,
+        },
+        orders: [],
+        linkedSiteOrders: [],
+      };
   accounts[email] = account;
   await writeAccounts(accounts);
   await AsyncStorage.setItem(SESSION_KEY, account.id).catch(() => {});
@@ -405,22 +575,22 @@ export async function signInWithShopifyCustomer(input: {
 }
 
 /**
- * Saves a Shopify order snapshot onto the currently signed-in app
+ * Saves a site order snapshot onto the currently signed-in app
  * account ("Link to my account" in Order History). Dedupes by order
- * id; re-linking refreshes the snapshot. Returns the updated account,
- * or null when nobody is signed into the app.
+ * number; re-linking refreshes the snapshot. Returns the updated
+ * account, or null when nobody is signed into the app.
  */
-export async function linkShopifyOrderToCurrentAccount(
-  order: LinkedShopifyOrder
+export async function linkSiteOrderToCurrentAccount(
+  order: LinkedSiteOrder
 ): Promise<AppAccount | null> {
   const account = await getCurrentAccount();
   if (!account) return null;
-  const rest = (account.linkedShopifyOrders ?? []).filter(
-    (o) => o.id !== order.id
+  const rest = (account.linkedSiteOrders ?? []).filter(
+    (o) => o.number !== order.number
   );
   const next: AppAccount = {
     ...account,
-    linkedShopifyOrders: [order, ...rest].slice(0, 100),
+    linkedSiteOrders: [order, ...rest].slice(0, 100),
   };
   await saveAccount(next);
   return next;
@@ -441,15 +611,29 @@ export async function getCurrentAccount(): Promise<AppAccount | null> {
   }
 }
 
-/** Persists a mutated copy of the current account. */
+/**
+ * Persists a mutated copy of the current account. When the account
+ * name changed, it is pushed to the site best-effort (PUT
+ * /api/account/profile) — a failed push never blocks the local save.
+ */
 export async function saveAccount(account: AppAccount): Promise<void> {
   const accounts = await readAccounts();
-  accounts[normalizeEmail(account.email)] = sanitizeAccount(account);
+  const previous = accounts[normalizeEmail(account.email)];
+  const next = sanitizeAccount(account);
+  accounts[normalizeEmail(account.email)] = next;
   await writeAccounts(accounts);
+  if (previous && previous.name !== next.name && next.name) {
+    void siteCall("/api/account/profile", {
+      method: "PUT",
+      body: { name: next.name },
+    }).catch(() => {});
+  }
 }
 
-/** Signs out (keeps the account on the device). */
+/** Signs out: ends the site session best-effort, clears token + session. */
 export async function signOutAccount(): Promise<void> {
+  void siteCall("/api/account/logout", { body: {} }).catch(() => {});
+  await setSessionToken(null);
   await AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
 }
 
@@ -486,102 +670,339 @@ export async function requestCancelOrderReceipt(
   return next;
 }
 
-/** Changes the current account's password (verifies the old one). */
+/** Changes the signed-in account's password on the site. */
 export async function changePassword(
   oldPassword: string,
   newPassword: string
 ): Promise<AccountResult> {
   const account = await getCurrentAccount();
   if (!account) return { ok: false, reason: "You're not signed in." };
-  if (newPassword.length < 6) {
+  if (newPassword.length < 8) {
     return {
       ok: false,
-      reason: "Choose a password with at least 6 characters.",
+      reason: "Choose a password with at least 8 characters.",
     };
   }
-  const attempt = await hashPassword(oldPassword, account.salt);
-  if (attempt !== account.passwordHash) {
-    return { ok: false, reason: "Your current password is incorrect." };
-  }
-  const saltBytes = await Crypto.getRandomBytesAsync(16);
-  const salt = bytesToHex(saltBytes);
-  const next: AppAccount = {
-    ...account,
-    salt,
-    passwordHash: await hashPassword(newPassword, salt),
-  };
-  await saveAccount(next);
-  void changeRemotePassword({
-    email: account.email,
-    oldPassword,
-    newPassword,
+  const res = await siteCall("/api/account/change-password", {
+    body: { current_password: oldPassword, new_password: newPassword },
   });
-  return { ok: true, account: next };
-}
-
-/**
- * Sets a new password for the account with this email (no old password
- * required). Only call after the reset code was verified with the
- * password-reset worker — the worker's single-use token is the proof.
- */
-export async function setPasswordForEmail(
-  email: string,
-  newPassword: string
-): Promise<{ ok: boolean; error?: string }> {
-  if (newPassword.length < 6) {
-    return { ok: false, error: "Choose a password with at least 6 characters." };
+  if (!res.ok) {
+    if (res.status === 401) {
+      return { ok: false, reason: "Your current password is incorrect." };
+    }
+    return { ok: false, reason: res.error };
   }
-  const accounts = await readAccounts();
-  const key = normalizeEmail(email);
-  const account = accounts[key];
-  if (!account) return { ok: false, error: "No account found for that email." };
-  const saltBytes = await Crypto.getRandomBytesAsync(16);
-  const salt = bytesToHex(saltBytes);
-  accounts[key] = {
-    ...account,
-    salt,
-    passwordHash: await hashPassword(newPassword, salt),
-  };
-  await writeAccounts(accounts);
-  // Keep the registry in step so the new password logs in anywhere.
-  void syncRemotePassword({ email: key, password: newPassword });
-  return { ok: true };
-}
-
-/** True when `password` matches the signed-in account's local copy. */
-export async function verifyCurrentPassword(
-  password: string
-): Promise<boolean> {
-  const account = await getCurrentAccount();
-  if (!account) return false;
-  const attempt = await hashPassword(password, account.salt);
-  return attempt === account.passwordHash;
+  return { ok: true, account };
 }
 
 /**
- * Permanently deletes the current account: the registry record goes
- * too (freeing the email — coming back means signing up again), then
- * all device data. Password is verified first so a borrowed phone
- * can't nuke the account from the Settings screen.
+ * Deletes the device-side account after verifying the password with a
+ * site login. The site has NO account-delete endpoint, so this does
+ * NOT delete the server-side registration or free the email — the
+ * Delete Account screen says exactly that and points at the email
+ * request for server-side removal. Deleting locally then re-signing
+ * in with the same email still works.
  */
 export async function deleteCurrentAccount(
   password: string
 ): Promise<{ ok: boolean; reason?: string }> {
   const account = await getCurrentAccount();
   if (!account) return { ok: false, reason: "You're not signed in." };
-  const attempt = await hashPassword(password, account.salt);
-  if (attempt !== account.passwordHash) {
-    return {
-      ok: false,
-      reason: "That password doesn't match — account not deleted.",
-    };
+  const verify = await siteCall<{
+    account?: { email?: string; name?: string };
+    session_token?: string;
+  }>("/api/account/login", {
+    body: { email: account.email, password },
+    authed: false,
+  });
+  if (!verify.ok) {
+    if (verify.status === 401) {
+      return {
+        ok: false,
+        reason: "That password doesn't match — account not deleted.",
+      };
+    }
+    return { ok: false, reason: verify.error };
   }
-  await deleteRemoteAccount({ email: account.email, password }).catch(
-    () => false
-  );
+  await captureToken(verify.data);
+  await signOutAccount();
   const accounts = await readAccounts();
   delete accounts[normalizeEmail(account.email)];
   await writeAccounts(accounts);
-  await AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
   return { ok: true };
+}
+
+/* ------------------------- Site account reads ------------------------------ */
+
+/**
+ * The signed-in site account: profile, live orders, addresses.
+ * Returns null when the server says "not signed in" (no token yet, or
+ * expired) — callers fall back to local receipts + guest lookup.
+ * Throws on network failure.
+ */
+export async function fetchSiteAccount(): Promise<SiteAccountView | null> {
+  const res = await siteCall<{
+    account?: { email: string; name: string };
+    orders?: SiteOrder[];
+    addresses?: Array<Record<string, unknown>>;
+    newsletter_subscribed?: boolean;
+  }>("/api/account/me", { method: "GET" });
+  if (!res.ok) {
+    if (res.status === 401) return null;
+    throw new Error(res.error);
+  }
+  return {
+    account: res.data.account ?? { email: "", name: "" },
+    orders: res.data.orders ?? [],
+    addresses: res.data.addresses ?? [],
+    newsletterSubscribed: res.data.newsletter_subscribed ?? false,
+  };
+}
+
+/**
+ * The signed-in account's order list (GET /api/account/orders).
+ * Returns null when the server says "not signed in" (no token yet, or
+ * expired) — callers fall back to local receipts + guest lookup.
+ * Throws on network failure.
+ */
+export async function fetchSiteOrderList(): Promise<SiteOrderSummary[] | null> {
+  const res = await siteCall<{
+    orders?: Array<Record<string, unknown>>;
+  }>("/api/account/orders", { method: "GET" });
+  if (!res.ok) {
+    if (res.status === 401) return null;
+    throw new Error(res.error);
+  }
+  return (res.data.orders ?? []).map((o) => ({
+    number: String(o.order_number ?? ""),
+    createdAt: String(o.created_at ?? ""),
+    totalCents: Number(o.total_cents ?? 0),
+    status: String(o.status ?? ""),
+    itemCount: Number(o.item_count ?? 0),
+  }));
+}
+
+/** Live detail for one signed-in order, by site order number. */
+export async function fetchSiteOrderDetail(
+  orderNumber: string
+): Promise<SiteOrderDetail> {
+  const res = await siteCall<{ order?: Record<string, unknown> }>(
+    `/api/account/orders/${encodeURIComponent(orderNumber.trim().toUpperCase())}`,
+    { method: "GET" }
+  );
+  if (!res.ok) {
+    if (res.status === 404) throw new Error("Order not found.");
+    if (res.status === 401) {
+      throw new Error("You're not signed in on the store — sign in and try again.");
+    }
+    throw new Error(res.error);
+  }
+  const o = (res.data.order ?? {}) as Record<string, unknown>;
+  const items = (Array.isArray(o.items) ? o.items : []) as Array<
+    Record<string, unknown>
+  >;
+  const addr = (o.shipping_address ?? {}) as Record<string, unknown>;
+  return {
+    number: String(o.number ?? orderNumber),
+    status: String(o.status ?? ""),
+    printifyStatus: (o.printify_status as string | null) ?? null,
+    totalCents: Number(o.total_cents ?? 0),
+    subtotalCents: Number(o.subtotal_cents ?? 0),
+    shippingCents:
+      o.shipping_cents === null || o.shipping_cents === undefined
+        ? null
+        : Number(o.shipping_cents),
+    taxCents: Number(o.tax_cents ?? 0),
+    discountCents: Number(o.discount_cents ?? 0),
+    discountCode: (o.discount_code as string | null) ?? null,
+    createdAt: String(o.created_at ?? ""),
+    customerName: (o.customer_name as string | null) ?? null,
+    shippingAddress: {
+      address1: addr.address1 as string | undefined,
+      address2: addr.address2 as string | undefined,
+      city: addr.city as string | undefined,
+      state: addr.state as string | undefined,
+      postal: addr.postal as string | undefined,
+      country: addr.country as string | undefined,
+    },
+    orderNotes: (o.order_notes as string | null) ?? null,
+    trackingNumber: (o.tracking_number as string | null) ?? null,
+    trackingUrl: (o.tracking_url as string | null) ?? null,
+    items: items.map((it) => ({
+      handle: String(it.handle ?? ""),
+      title: String(it.title ?? ""),
+      variantLabel: String(it.variant_label ?? ""),
+      qty: Number(it.qty ?? 1),
+      unitPriceCents: Number(it.unit_price_cents ?? 0),
+      lineTotalCents: Number(it.line_total_cents ?? 0),
+    })),
+  };
+}
+
+/**
+ * Guest order lookup: order number + checkout email must BOTH match
+ * (the server answers the same generic 404 otherwise). No session
+ * needed, no account created.
+ */
+export async function guestOrderLookup(
+  orderNumber: string,
+  email: string
+): Promise<SiteOrderDetail> {
+  const res = await siteCall<{ order?: Record<string, unknown> }>(
+    "/api/guest-order-lookup",
+    {
+      body: {
+        order_number: orderNumber.trim().toUpperCase(),
+        email: normalizeEmail(email),
+      },
+      authed: false,
+    }
+  );
+  if (!res.ok) {
+    if (res.status === 404) throw new Error("Order not found.");
+    throw new Error(res.error);
+  }
+  const o = (res.data.order ?? {}) as Record<string, unknown>;
+  // Same payload shape as the signed-in detail endpoint.
+  const detail = await (async () => {
+    const items = (Array.isArray(o.items) ? o.items : []) as Array<
+      Record<string, unknown>
+    >;
+    const addr = (o.shipping_address ?? {}) as Record<string, unknown>;
+    return {
+      number: String(o.number ?? orderNumber),
+      status: String(o.status ?? ""),
+      printifyStatus: (o.printify_status as string | null) ?? null,
+      totalCents: Number(o.total_cents ?? 0),
+      subtotalCents: Number(o.subtotal_cents ?? 0),
+      shippingCents:
+        o.shipping_cents === null || o.shipping_cents === undefined
+          ? null
+          : Number(o.shipping_cents),
+      taxCents: Number(o.tax_cents ?? 0),
+      discountCents: Number(o.discount_cents ?? 0),
+      discountCode: (o.discount_code as string | null) ?? null,
+      createdAt: String(o.created_at ?? ""),
+      customerName: (o.customer_name as string | null) ?? null,
+      shippingAddress: {
+        address1: addr.address1 as string | undefined,
+        address2: addr.address2 as string | undefined,
+        city: addr.city as string | undefined,
+        state: addr.state as string | undefined,
+        postal: addr.postal as string | undefined,
+        country: addr.country as string | undefined,
+      },
+      orderNotes: (o.order_notes as string | null) ?? null,
+      trackingNumber: (o.tracking_number as string | null) ?? null,
+      trackingUrl: (o.tracking_url as string | null) ?? null,
+      items: items.map((it) => ({
+        handle: String(it.handle ?? ""),
+        title: String(it.title ?? ""),
+        variantLabel: String(it.variant_label ?? ""),
+        qty: Number(it.qty ?? 1),
+        unitPriceCents: Number(it.unit_price_cents ?? 0),
+        lineTotalCents: Number(it.line_total_cents ?? 0),
+      })),
+    };
+  })();
+  return detail;
+}
+
+/**
+ * The signed-in account's affiliate record, or null when no affiliate
+ * is linked to that email (join state). Joining is temporarily
+ * disabled on the site — no join flow is built here.
+ */
+export async function fetchSiteAffiliate(): Promise<SiteAffiliate | null> {
+  const res = await siteCall<{ affiliate?: Record<string, unknown> | null }>(
+    "/api/account/affiliate",
+    { method: "GET" }
+  );
+  if (!res.ok) {
+    if (res.status === 401) return null;
+    throw new Error(res.error);
+  }
+  const a = res.data.affiliate;
+  if (!a) return null;
+  const orders = (Array.isArray(a.orders) ? a.orders : []) as Array<
+    Record<string, unknown>
+  >;
+  const payouts = (Array.isArray(a.payouts) ? a.payouts : []) as Array<
+    Record<string, unknown>
+  >;
+  return {
+    code: String(a.code ?? ""),
+    link: String(a.link ?? ""),
+    rate: String(a.rate ?? ""),
+    rateBasisPoints: Number(a.rate_basis_points ?? 0),
+    totalEarningsCents: Number(a.total_earnings_cents ?? 0),
+    totalEarnings: String(a.total_earnings ?? ""),
+    orders: orders.map((o) => ({
+      order_number: String(o.order_number ?? ""),
+      date: String(o.date ?? ""),
+      commission_cents: Number(o.commission_cents ?? 0),
+      commission: String(o.commission ?? ""),
+      status: String(o.status ?? ""),
+    })),
+    payouts: payouts.map((p) => ({
+      amount_cents: Number(p.amount_cents ?? 0),
+      amount: String(p.amount ?? ""),
+      status: String(p.status ?? ""),
+      created_at: String(p.created_at ?? ""),
+      note: String(p.note ?? ""),
+    })),
+    name: (a.name as string | null) ?? null,
+    paymentMethod: (a.payment_method as string | null) ?? null,
+    paymentHandle: (a.payment_handle as string | null) ?? null,
+  };
+}
+
+/**
+ * Site forgot-password: always the same generic success (the server
+ * never reveals whether the email has an account). The reset link is
+ * emailed and opens the SITE in the browser — the shopper resets
+ * there, then logs in here. No code, no in-app reset form.
+ */
+export async function requestForgotPassword(
+  email: string
+): Promise<{ ok: boolean; message: string }> {
+  const res = await siteCall<{ message?: string }>("/api/account/forgot-password", {
+    body: { email: normalizeEmail(email) },
+    authed: false,
+  });
+  if (!res.ok) {
+    return { ok: false, message: res.error };
+  }
+  return {
+    ok: true,
+    message:
+      res.data.message ??
+      "If an account exists for that email, you will receive a password reset link.",
+  };
+}
+
+/**
+ * Posts a newly added local address to the site best-effort (only
+ * when a session token exists). Returns false when skipped or failed
+ * — the local address still saves; the site copy is a bonus, never a
+ * blocker. Edits/deletes are not posted (no site id is tracked).
+ */
+export async function addSiteAddress(
+  address: LocalAddress
+): Promise<boolean> {
+  if (!(await getSessionToken())) return false;
+  const res = await siteCall("/api/account/addresses", {
+    body: {
+      label: address.label,
+      name: address.name,
+      address1: address.street,
+      address2: address.street2,
+      city: address.city,
+      state: address.province,
+      postal: address.zip,
+      country: address.country,
+      is_default: address.isDefault,
+    },
+  });
+  return res.ok;
 }

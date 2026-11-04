@@ -1,59 +1,45 @@
 /**
- * Config for full in-app checkout (Stripe PaymentSheet + checkout worker).
+ * Config for full in-app checkout (Stripe PaymentSheet + the
+ * BeaTrackFam Cloudflare storefront backend).
  *
  * HOW IT WORKS
  * The shopper pays inside the app (card, Apple Pay, Google Pay, and
- * Affirm/Afterpay/Klarna when enabled on the Stripe account). Only AFTER
- * the payment succeeds does the checkout worker create the order in
- * Shopify, marked paid, so Printify fulfills it like any other order.
- * Promo codes are validated by Shopify at quote time, so codes created
- * in Shopify admin apply exactly like on the website.
+ * Affirm/Afterpay/Klarna when enabled on the Stripe account) against a
+ * PaymentIntent created by the site backend
+ * (POST /api/checkout/create-embedded-intent). The backend creates the
+ * site order (pending_payment) at intent time — that is the store's
+ * standing rule — and its Stripe webhook flips the order to paid once
+ * the money lands, so Printify fulfills it like any other order.
  *
- * SETUP (one-time, see workers/checkout/README.md for the full guide)
- * 1. Create a Stripe account → paste the PUBLISHABLE key below.
- * 2. Deploy workers/checkout (Cloudflare) → its URL is already filled in.
- * 3. Create an Apple Merchant ID `merchant.com.beatrackfaminc` (plugin is
- *    already configured with it in app.json) and associate it with the
- *    app in the Apple Developer portal → Apple Pay turns on.
+ * There is NO app test-mode concept on the site backend: Stripe
+ * test/live is a server-side posture, not something the app can flip
+ * per device. The old owner-only test switch (separate test worker +
+ * test publishable key) was removed with the Shopify checkout worker
+ * because it cannot point at the site's own test posture without new
+ * backend work. Checkout here is always the live site backend.
  *
- * Until the publishable key is pasted, in-app checkout is OFF and the
- * app keeps using today's Shopify checkout (browser / native sheet),
- * so nothing breaks before setup is finished. The shared worker guard
- * lives in lib/accountsConfig.ts; the checkout client reads it there.
+ * Apple Pay: merchant ID merchant.com.beatrackfaminc (plugin is
+ * configured with it in app.json); see the rebuild plan for the
+ * remaining dashboard checks (Payment Processing Certificate in the
+ * Stripe Dashboard is the most likely gap).
  */
 
-/** Stripe PUBLISHABLE key (pk_live_… or pk_test_…). Safe to ship in-app. */
+/** The Cloudflare storefront backend — every site API lives here. */
+export const SITE_BACKEND_URL = "https://beatrackfam.info";
+
+/** Stripe PUBLISHABLE key (pk_live_…). Safe to ship in-app. */
 export const STRIPE_PUBLISHABLE_KEY =
   "pk_live_51SnaQ5Q3FeSPQRlUNFJdLAk3eJIvXrfI8bgZMyqy5igTzec83oIutk4Zb1JW4VrK855divpbDQHV4L1Tn2luttSd00zOfk0l4j";
 
 /** Apple Merchant ID for Apple Pay (created in the Apple Developer portal). */
 export const APPLE_MERCHANT_ID = "merchant.com.beatrackfaminc";
 
-export const CHECKOUT_WORKER_URL =
-  "https://beatrackfam-checkout.contact-beatrackfam.workers.dev";
-
-/**
- * Owner-only checkout TEST mode (see lib/checkoutMode.ts): when Joey is
- * signed in as the owner and flips the hidden switch in App Settings,
- * checkout talks to the TEST worker + Stripe test keys so he can place
- * full test orders (4242 cards, declines, etc.) with zero real money.
- * Customers never see the switch (it renders only for the owner
- * account), and the live path above is the default for everyone.
- * Fill these two in to arm test mode; until then the switch explains
- * that test checkout isn't configured yet.
- */
-export const STRIPE_TEST_PUBLISHABLE_KEY =
-  "pk_test_51SnaQ5Q3FeSPQRlUgNOCq3qnsyosThKLTjoXxHu5S6KO5RoLcl5D3fzdx9pG2rI1NmM7DIACOJ6Bdv6Ui4DXZHCq00OKkpmjkX";
-
-export const TEST_CHECKOUT_WORKER_URL =
-  "https://beatrackfam-checkout-test.contact-beatrackfam.workers.dev";
-
 export const isStripeKeyTest = () =>
   STRIPE_PUBLISHABLE_KEY.startsWith("pk_test_");
 
 export const isInAppCheckoutEnabled = () =>
   STRIPE_PUBLISHABLE_KEY.trim().length > 10 &&
-  CHECKOUT_WORKER_URL.trim().length > 0;
+  SITE_BACKEND_URL.trim().length > 0;
 
 /**
  * The native Stripe SDK wants a syntactically valid key at startup even

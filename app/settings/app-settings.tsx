@@ -34,12 +34,6 @@ import {
   type LocationPermissionStatus,
 } from "../../lib/launchPermissions";
 import { POLICY_ORDER, POLICIES } from "../../data/policies";
-import {
-  getCheckoutModeState,
-  refreshCheckoutSessionEmail,
-  setCheckoutTestMode,
-  useCheckoutRuntime,
-} from "../../lib/checkoutMode";
 import { Spacing } from "../../constants/theme";
 
 const TRACKING_LABELS: Record<TrackingPermissionStatus, string> = {
@@ -65,12 +59,6 @@ export default function AppSettings() {
     useState<LocationPermissionStatus | null>(null);
   const [pushEnabled, setPushEnabled] = useState(true);
   const [pushBusy, setPushBusy] = useState(false);
-  const [ownerState, setOwnerState] = useState<{
-    flagOn: boolean;
-    owner: boolean;
-    testConfigured: boolean;
-  } | null>(null);
-  const checkoutRuntime = useCheckoutRuntime();
 
   // Statuses are read fresh on every call: the app reflects whatever the
   // device says right now — at launch, on screen focus, and when the user
@@ -82,8 +70,6 @@ export default function AppSettings() {
       getPushPreference(),
       getLocationPermissionStatus(),
     ]);
-    await refreshCheckoutSessionEmail().catch(() => {});
-    setOwnerState(getCheckoutModeState());
     if (tracking) setTrackingStatus(tracking);
     setPushOsStatus(osStatus);
     setPushEnabled(pref);
@@ -133,11 +119,6 @@ export default function AppSettings() {
     } finally {
       setPushBusy(false);
     }
-  };
-
-  const onToggleTestMode = async (value: boolean) => {
-    await setCheckoutTestMode(value);
-    setOwnerState(getCheckoutModeState());
   };
 
   const pushSubtitle =
@@ -217,35 +198,9 @@ export default function AppSettings() {
           {DEVICE_NOTE}
         </Text>
 
-        {ownerState?.owner && (
-          <>
-            <SectionLabel text="DEVELOPER" />
-            <SettingRow
-              icon={icon("flask-outline")}
-              title="Checkout Test Mode"
-              subtitle={
-                !ownerState.testConfigured
-                  ? "Test checkout isn't configured yet"
-                  : checkoutRuntime.testMode
-                    ? "On — orders use the test sandbox"
-                    : "Off — live checkout"
-              }
-              right={
-                <Switch
-                  value={ownerState.testConfigured && ownerState.flagOn}
-                  onValueChange={onToggleTestMode}
-                  disabled={!ownerState.testConfigured}
-                  accessibilityLabel="Toggle checkout test mode"
-                />
-              }
-            />
-            <Text style={[styles.deviceNote, { color: colors.textDim }]}>
-              Owner only. Test mode places orders through the Stripe test
-              sandbox — no real money moves. Test orders land in Shopify
-              tagged app-checkout-test; cancel them after testing.
-            </Text>
-          </>
-        )}
+        {/* No checkout test switch: the site backend has no per-device
+            test posture — Stripe test/live is server-side. Removed with
+            the Shopify checkout worker (Nov 2026 rebuild). */}
 
         <SectionLabel text="APP INFO" />
         <SettingRow

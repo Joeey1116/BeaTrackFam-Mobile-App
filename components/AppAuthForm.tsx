@@ -1,7 +1,7 @@
 /**
  * BeaTrackFam app-account sign-in form (shared by login + signup).
  *
- * Accounts are registered with the BeaTrackFam accounts worker, so a
+ * Accounts live on the BeaTrackFam site (D1 customer_accounts), so a
  * login survives deleting and reinstalling the app; the phone keeps a
  * local copy for its session and offline fallback (lib/accounts.ts).
  * After a successful sign-up the form shows an "Account created"
@@ -25,7 +25,6 @@ import { useTheme } from "./ThemeProvider";
 import { OutlineButton, PrimaryButton, ScreenHeader, TextField } from "./ui";
 import { useShop } from "../store/shop";
 import { Radius, Spacing, Type } from "../constants/theme";
-import { isResetAvailable } from "../lib/passwordReset";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -33,14 +32,12 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
   const { colors } = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ email?: string }>();
-  const { signIn, signUp, signOut, continueAsGuest, signInWithShopify } =
-    useShop();
+  const { signIn, signUp, signOut, continueAsGuest } = useShop();
   const [name, setName] = useState("");
   const [email, setEmail] = useState(params.email ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [shopifyBusy, setShopifyBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
 
@@ -58,8 +55,8 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
       setError("Enter a valid email address.");
       return;
     }
-    if (password.length < 6) {
-      setError("Your password needs at least 6 characters.");
+    if (password.length < 8) {
+      setError("Your password needs at least 8 characters.");
       return;
     }
     if (isSignup && password !== confirmPassword) {
@@ -91,21 +88,6 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
       }
     } finally {
       setBusy(false);
-    }
-  };
-
-  const onShopify = async () => {
-    setError(null);
-    setShopifyBusy(true);
-    try {
-      const result = await signInWithShopify();
-      if (result.ok) {
-        router.replace("/(tabs)");
-      } else {
-        setError(result.reason);
-      }
-    } finally {
-      setShopifyBusy(false);
     }
   };
 
@@ -205,7 +187,7 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
           />
         )}
 
-        {!isSignup && isResetAvailable() && (
+        {!isSignup && (
           <Pressable
             onPress={() => router.push("/forgot-password")}
             hitSlop={10}
@@ -264,31 +246,6 @@ export function AppAuthForm({ mode }: { mode: "login" | "signup" }) {
         <View style={styles.guestWrap}>
           <OutlineButton label="Shop as Guest" onPress={onGuest} />
         </View>
-
-        <View style={styles.dividerRow}>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <Text style={[styles.dividerText, { color: colors.textDim }]}>
-            or
-          </Text>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-        </View>
-
-        {shopifyBusy ? (
-          <View style={[styles.busy, { backgroundColor: colors.button }]}>
-            <ActivityIndicator color={colors.buttonText} />
-          </View>
-        ) : (
-          <OutlineButton
-            label="Continue with Shopify"
-            onPress={onShopify}
-          />
-        )}
-        <Text style={[styles.shopifyNote, { color: colors.textDim }]}>
-          Uses the email from your Shopify orders — no separate password
-          to remember. Whether you continue with Shopify or use email
-          above, it&apos;s the same BeaTrackFam account: your profile,
-          addresses, and orders stay together by email.
-        </Text>
 
         <View style={styles.switchWrap}>
           <Text style={[styles.switchText, { color: colors.textMuted }]}>
@@ -368,18 +325,4 @@ const styles = StyleSheet.create({
   bannerMain: { flex: 1, gap: 2 },
   bannerTitle: { fontSize: 14, fontWeight: "800" },
   bannerText: { fontSize: 13, lineHeight: 18 },
-  shopifyNote: {
-    fontSize: 12,
-    lineHeight: 17,
-    textAlign: "center",
-    marginTop: Spacing.sm,
-  },
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    marginVertical: Spacing.md,
-  },
-  divider: { flex: 1, height: 1 },
-  dividerText: { fontSize: 12, fontWeight: "600" },
 });

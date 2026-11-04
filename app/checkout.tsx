@@ -1,18 +1,24 @@
 /**
  * Checkout — screen-05 blueprint.
  *
- * The buyer fills in contact + shipping details right here in the app.
- * When in-app checkout is set up (Stripe publishable key in
- * lib/checkoutConfig.ts), they pay WITHOUT leaving the app — card,
- * Apple Pay, Google Pay, Affirm/Afterpay/Klarna — and the checkout
- * worker creates the paid order in Shopify after the money lands.
- * Until then, Shopify's checkout opens as a native sheet (or browser)
- * with the details pre-filled, like before.
+ * The buyer fills in contact + shipping details right here in the app,
+ * picks a shipping option, then pays WITHOUT leaving the app — card,
+ * Apple Pay, Google Pay, Affirm/Afterpay/Klarna — against a
+ * PaymentIntent from the BeaTrackFam site backend
+ * (lib/inAppCheckout.ts). The backend creates the site order
+ * (pending_payment) at intent time and its Stripe webhook flips it to
+ * paid once the money lands, so Printify fulfills it like any other
+ * order. The receipt is keyed by the site order number
+ * (BTF-YYYYMMDD-XXXX), never a Shopify id.
+ *
+ * Currency follows the ship-to country (US -> USD, CA -> CAD,
+ * MX -> MXN). A PaymentIntent's currency can't change, so switching
+ * country abandons the current intent and quotes a fresh one — the
+ * same rule the website checkout page follows.
  */
 import React, { useEffect, useState } from "react";
 import {
   Alert,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -22,42 +28,24 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as WebBrowser from "expo-web-browser";
 import { useTheme } from "../components/ThemeProvider";
 import { PrimaryButton, ScreenHeader, TextField } from "../components/ui";
-import { formatMoney, useShop } from "../store/shop";
-import { buildCartPermalink } from "../data/mock";
+import { useShop } from "../store/shop";
 import { Radius, Spacing } from "../constants/theme";
-import {
-  createCartCheckoutUrl,
-  findDeadVariantIds,
-  isStorefrontConfigured,
-  type CheckoutBuyer,
-} from "../lib/storefront";
-import {
-  onCheckoutEvent,
-  presentNativeCheckout,
-} from "../lib/nativeCheckout";
 import { useStripe } from "@stripe/stripe-react-native";
 import { isInAppCheckoutEnabled } from "../lib/checkoutConfig";
-import { useCheckoutRuntime } from "../lib/checkoutMode";
 import {
-  confirmInAppOrder,
+  currencyForCountry,
+  getShippingRates,
   quoteInAppCheckout,
+  confirmInAppOrder,
   validatePromoCodes,
+  type CheckoutBuyer,
   type InAppQuote,
+  type ShippingRateOption,
 } from "../lib/inAppCheckout";
 
-const PAYMENT_METHODS = [
-  { label: "Apple Pay", icon: "logo-apple" },
-  { label: "Google Pay", icon: "logo-google" },
-  { label: "Shop Pay", icon: "bag-outline" },
-  { label: "PayPal", icon: "logo-paypal" },
-  { label: "Credit / Debit Card", icon: "card-outline" },
-] as const;
-
-/** Methods handled by Stripe inside the app (Shop Pay / PayPal stay
- *  website-checkout only — see workers/checkout/README.md). */
+/** Methods handled by Stripe inside the app. */
 const IN_APP_PAYMENT_METHODS = [
   { label: "Apple Pay", icon: "logo-apple" },
   { label: "Google Pay", icon: "logo-google" },
@@ -73,35 +61,43 @@ const COUNTRIES = [
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/**
- * Opens the Shopify checkout URL outside the native sheet.
- * Prefers the in-app browser; if that native module is also missing
- * (older dev build), falls back to the system browser via Linking,
- * which is core React Native and always available.
- */
-async function openCheckoutInBrowser(checkoutUrl: string): Promise<void> {
-  try {
-    await WebBrowser.openBrowserAsync(checkoutUrl);
-  } catch {
-    await Linking.openURL(checkoutUrl);
+const fmtDollars = (n: number): string => `$${n.toFixed(2)}`;
+
+/** Cart lines arrive in the data-layer shape (handle + variant title,
+ * integer cents) — the intent mapping below reads exactly those. */
+interface IntentLineInput {
+  handle: string;
+  variantTitle: string;
+  price_cents: number;
+  qty: number;
+}
+
+function toIntentLines(lines: IntentLineInput[]): {
+  intent: { handle: string; variant: string; qty: number }[];
+  subtotalCents: number;
+  itemCount: number;
+} {
+  const intent: { handle: string; variant: string; qty: number }[] = [];
+  let subtotalCents = 0;
+  let itemCount = 0;
+  for (const l of lines) {
+    if (!l.handle) continue;
+    intent.push({ handle: l.handle, variant: l.variantTitle, qty: l.qty });
+    subtotalCents += l.price_cents * l.qty;
+    itemCount += l.qty;
   }
+  return { intent, subtotalCents, itemCount };
 }
 
 export default function Checkout() {
   const { colors } = useTheme();
-  const checkoutRuntime = useCheckoutRuntime();
   const router = useRouter();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
-  const {
-    cartLines,
-    cartCount,
-    subtotal,
-    clearCart,
-    removeLine,
-    account,
-    profile,
-    addOrderReceipt,
-  } = useShop();
+  const { cartLines, clearCart, account, profile, addOrderReceipt } =
+    useShop();
+
+  const { intent: intentLines, subtotalCents, itemCount } =
+    toIntentLines(cartLines);
 
   // Pre-fill from the signed-in account + default saved address. Values are
   // read lazily at first render, so no effect/setState dance is needed.
@@ -136,7 +132,7 @@ export default function Checkout() {
   const [promoInput, setPromoInput] = useState("");
   const [promoCodes, setPromoCodes] = useState<string[]>([]);
   const [promoBusy, setPromoBusy] = useState(false);
-  /** Discounted totals from Shopify (set by promo validation / quotes). */
+  /** Discounted totals from the site (set by promo validation / quotes). */
   const [promoTotals, setPromoTotals] = useState<InAppQuote["totals"] | null>(
     null
   );
@@ -145,6 +141,21 @@ export default function Checkout() {
     key: string;
     quote: InAppQuote;
   } | null>(null);
+  const [rates, setRates] = useState<ShippingRateOption[]>([]);
+  const [ratesLoading, setRatesLoading] = useState(true);
+  const [selectedRateId, setSelectedRateId] = useState<string | null>(null);
+
+  /** Country change (chip or saved address): drop the stale rates and
+   * re-fetch below. Loading is set here — in an event handler — not
+   * inside the fetch effect (lint: set-state-in-effect). */
+  const onCountryChange = (code: string) => {
+    setCountry(code);
+    setPrepared(null);
+    setRates([]);
+    setRatesLoading(true);
+  };
+
+  const currency = currencyForCountry(country);
 
   const applyPromoCode = async () => {
     const code = promoInput.trim().toUpperCase();
@@ -160,17 +171,13 @@ export default function Checkout() {
       Alert.alert("Already added", "That code is already on this order.");
       return;
     }
-    // When in-app checkout is live, Shopify itself checks the code the
-    // moment it's applied — only real codes stick.
-    if (isInAppCheckoutEnabled() && cartLines.length > 0) {
+    if (isInAppCheckoutEnabled() && intentLines.length > 0) {
       setPromoBusy(true);
       try {
         const result = await validatePromoCodes(
-          cartLines.map((l) => ({
-            variantId: l.variantId,
-            quantity: l.quantity,
-          })),
-          [...promoCodes, code]
+          intentLines,
+          [...promoCodes, code],
+          { subtotalCents, email: email.trim() || undefined }
         );
         if (!result.appliedCodes.includes(code)) {
           Alert.alert(
@@ -180,8 +187,8 @@ export default function Checkout() {
           return;
         }
         setPromoCodes(result.appliedCodes);
-        setPromoTotals(result.totals);
         setPromoInput("");
+        setPrepared(null);
       } catch {
         Alert.alert(
           "Couldn't check that code",
@@ -205,15 +212,12 @@ export default function Checkout() {
       return;
     }
     try {
-      const result = await validatePromoCodes(
-        cartLines.map((l) => ({
-          variantId: l.variantId,
-          quantity: l.quantity,
-        })),
-        remaining
-      );
+      const result = await validatePromoCodes(intentLines, remaining, {
+        subtotalCents,
+        email: email.trim() || undefined,
+      });
       setPromoCodes(result.appliedCodes);
-      setPromoTotals(result.appliedCodes.length > 0 ? result.totals : null);
+      setPromoTotals(null);
     } catch {
       setPromoTotals(null);
     }
@@ -240,7 +244,7 @@ export default function Checkout() {
     setCity(addr.city);
     setProvince(addr.province);
     setZip(addr.zip);
-    setCountry(addr.country || "US");
+    onCountryChange(addr.country || "US");
     if (addr.phone) setPhone(addr.phone);
     setAppliedAddrId(addr.id);
     setSavedMenuOpen(false);
@@ -266,11 +270,11 @@ export default function Checkout() {
   };
 
   /**
-   * Full in-app payment: Shopify (via the worker) validates promo
-   * codes, shipping and tax first; Stripe takes the money in-app;
-   * the worker then creates the paid Shopify order so Printify
-   * fulfills it like always. A declined card shows Stripe's own
-   * error inside the payment sheet — no order, no charge.
+   * Full in-app payment: the site backend validates promo codes and
+   * shipping first; Stripe takes the money in-app; the site webhook
+   * then marks the order paid so Printify fulfills it like always.
+   * A declined card shows Stripe's own error inside the payment
+   * sheet — no order, no charge.
    */
   const buildBuyer = (): CheckoutBuyer => ({
     email: email.trim(),
@@ -286,12 +290,14 @@ export default function Checkout() {
   });
 
   const quoteKeyFor = (
-    lines: typeof cartLines,
-    buyer: CheckoutBuyer
+    lines: typeof intentLines,
+    buyer: CheckoutBuyer,
+    rateId: string | null
   ): string =>
     JSON.stringify({
-      l: lines.map((l) => [l.variantId, l.quantity]),
+      l: lines.map((l) => [l.handle, l.variant, l.qty]),
       c: promoCodes,
+      r: rateId,
       b: [
         buyer.email,
         buyer.firstName,
@@ -329,7 +335,7 @@ export default function Checkout() {
         ? {
             googlePay: {
               merchantCountryCode: "US",
-              testEnv: checkoutRuntime.testMode,
+              testEnv: false,
               currencyCode: quote.currency,
             },
           }
@@ -366,18 +372,22 @@ export default function Checkout() {
       return;
     }
 
-    // Money landed. Create the paid Shopify order (the Stripe webhook
-    // runs the same worker step as a backup, idempotently).
-    let orderName: string | null = null;
+    // Money landed. The site webhook marks the order paid; confirm the
+    // order exists (best-effort) so the receipt carries the real site
+    // order number.
+    let orderNumber: string | null = quote.orderNumber;
     try {
-      const order = await confirmInAppOrder(quote.paymentIntentId);
-      orderName = order.orderName;
+      const order = await confirmInAppOrder(quote.paymentIntentId, {
+        orderNumber: quote.orderNumber,
+        email: buyer.email,
+      });
+      orderNumber = order.orderName || quote.orderNumber;
     } catch {
-      orderName = null;
+      orderNumber = quote.orderNumber;
     }
 
     await addOrderReceipt({
-      id: orderName ?? `stripe-${quote.paymentIntentId}`,
+      id: orderNumber ?? `site-${quote.paymentIntentId}`,
       totalAmount: quote.totals.total.toFixed(2),
       currencyCode: quote.currency,
       itemCount: quote.lines.reduce((n, l) => n + l.quantity, 0),
@@ -397,12 +407,12 @@ export default function Checkout() {
   };
 
   const payInApp = async (
-    liveLines: typeof cartLines,
+    liveLines: typeof intentLines,
     buyer: CheckoutBuyer
   ) => {
     // Fast path: the background prefetch already quoted + initialized
     // the sheet for exactly this cart and address — present instantly.
-    const key = quoteKeyFor(liveLines, buyer);
+    const key = quoteKeyFor(liveLines, buyer, selectedRateId);
     if (
       prepared &&
       prepared.key === key &&
@@ -411,11 +421,9 @@ export default function Checkout() {
       await presentAndFinish(prepared.quote, buyer);
       return;
     }
-    const quote = await quoteInAppCheckout(
-      liveLines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
-      promoCodes,
-      buyer
-    );
+    const quote = await quoteInAppCheckout(liveLines, promoCodes, buyer, {
+      shippingRateId: selectedRateId,
+    });
     if (quote.rejectedCodes.length > 0) {
       setPromoCodes((codes) =>
         codes.filter((c) => !quote.rejectedCodes.includes(c))
@@ -438,28 +446,50 @@ export default function Checkout() {
     await presentAndFinish(quote, buyer);
   };
 
+  // Shipping options follow the ship-to country. The first option
+  // (Standard) is the default; changing it re-quotes (the prepared
+  // key includes the rate id).
+  useEffect(() => {
+    let cancelled = false;
+    getShippingRates(country, currency, promoCodes.includes("FREESHIP"))
+      .then((options) => {
+        if (cancelled) return;
+        setRates(options);
+        setSelectedRateId((prev) =>
+          prev && options.some((o) => o.id === prev)
+            ? prev
+            : (options[0]?.id ?? null)
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setRates([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRatesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [country, currency]);
+
   // Speed: while the shopper fills in their details, quietly fetch the
-  // Shopify quote and initialize the Stripe sheet in the background, so
+  // site quote and initialize the Stripe sheet in the background, so
   // "Continue to Payment" opens the sheet with no wait.
   const prepKey = isInAppCheckoutEnabled()
-    ? quoteKeyFor(cartLines, buildBuyer())
+    ? quoteKeyFor(intentLines, buildBuyer(), selectedRateId)
     : "";
   React.useEffect(() => {
-    if (!prepKey || cartLines.length === 0) return;
+    if (!prepKey || intentLines.length === 0) return;
     if (validate() !== null) return;
     let cancelled = false;
     const timer = setTimeout(() => {
       (async () => {
         try {
           const buyer = buildBuyer();
-          const quote = await quoteInAppCheckout(
-            cartLines.map((l) => ({
-              variantId: l.variantId,
-              quantity: l.quantity,
-            })),
-            promoCodes,
-            buyer
-          );
+          const quote = await quoteInAppCheckout(intentLines, promoCodes, buyer, {
+            shippingRateId: selectedRateId,
+          });
           if (cancelled || quote.rejectedCodes.length > 0) return;
           const err = await initSheetFor(quote, buyer);
           if (cancelled || err) return;
@@ -478,7 +508,7 @@ export default function Checkout() {
   }, [prepKey]);
 
   const onPay = async () => {
-    if (cartLines.length === 0 || busy) return;
+    if (intentLines.length === 0 || busy) return;
     const problem = validate();
     if (problem) {
       Alert.alert("Check your details", problem);
@@ -486,58 +516,8 @@ export default function Checkout() {
     }
     setBusy(true);
     try {
-      // Prune cart lines whose variant no longer exists in Shopify (product
-      // deleted/re-added under new ids) — otherwise cartCreate dies with
-      // "merchandise does not exist" and checkout can't start at all.
-      const dead = await findDeadVariantIds(cartLines.map((l) => l.variantId));
-      const liveLines = cartLines.filter((l) => !dead.has(l.variantId));
-      if (dead.size > 0) {
-        cartLines
-          .filter((l) => dead.has(l.variantId))
-          .forEach((l) => removeLine(l.id));
-        if (liveLines.length === 0) {
-          Alert.alert(
-            "Not available in the app yet",
-            "That item isn't available to buy in the app right now, so we removed it from your cart. You can still grab it on our website."
-          );
-          return;
-        }
-        Alert.alert(
-          "Cart updated",
-          "An item that isn't available in the app right now was removed from your cart. The rest is ready to check out."
-        );
-      }
-
       const buyer = buildBuyer();
-
-      if (isInAppCheckoutEnabled()) {
-        await payInApp(liveLines, buyer);
-        return;
-      }
-
-      let checkoutUrl: string;
-      if (isStorefrontConfigured()) {
-        checkoutUrl = await createCartCheckoutUrl(
-          liveLines.map((l) => ({
-            variantId: l.variantId,
-            quantity: l.quantity,
-          })),
-          buyer,
-          promoCodes
-        );
-      } else {
-        checkoutUrl = buildCartPermalink(liveLines);
-        if (promoCodes.length > 0) {
-          checkoutUrl += `?discount=${encodeURIComponent(promoCodes[0])}`;
-        }
-      }
-
-      const presented = await presentNativeCheckout(checkoutUrl);
-      if (!presented) {
-        // Native sheet unavailable (e.g. older dev build, web preview) —
-        // fall back to the browser so checkout always works.
-        await openCheckoutInBrowser(checkoutUrl);
-      }
+      await payInApp(intentLines, buyer);
     } catch (e) {
       Alert.alert(
         "Couldn't start checkout",
@@ -548,75 +528,13 @@ export default function Checkout() {
     }
   };
 
-  // When the native sheet reports a completed order: record a detailed
-  // receipt on the account (so Order History works), clear the cart, and
-  // send the buyer to the thank-you page. A failed checkout gets an
-  // apology popup; a dismissed sheet is left alone.
-  // A ref keeps the receipt snapshot fresh regardless of when the
-  // completion event fires.
-  const cartSnapshot = React.useRef({
-    lines: cartLines,
-    subtotal,
-    email: account?.email ?? "",
-  });
-  React.useEffect(() => {
-    cartSnapshot.current = {
-      lines: cartLines,
-      subtotal,
-      email: account?.email ?? "",
-    };
-  }, [cartLines, subtotal, account]);
-  useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
-    onCheckoutEvent(async (outcome) => {
-      if (outcome.type === "completed") {
-        const snap = cartSnapshot.current;
-        await addOrderReceipt({
-          id: outcome.orderId ?? `local-${Date.now()}`,
-          totalAmount: snap.subtotal.amount,
-          currencyCode: snap.subtotal.currencyCode,
-          itemCount: snap.lines.reduce((n, l) => n + l.quantity, 0),
-          email: snap.email,
-          status: "completed",
-          items: snap.lines.map((l) => ({
-            productTitle: l.product.title,
-            variantTitle: l.variantTitle,
-            quantity: l.quantity,
-            unitAmount: l.unitPrice.amount,
-            currencyCode: l.unitPrice.currencyCode,
-            imageUrl: l.product.images[0]?.url ?? null,
-          })),
-        });
-        clearCart();
-        router.replace("/thank-you");
-      } else if (outcome.type === "failed") {
-        Alert.alert(
-          "Order didn't go through",
-          "We're sorry, but your order didn't go through. Please try again."
-        );
-      }
-    }).then((fn) => {
-      unsubscribe = fn;
-    });
-    return () => {
-      unsubscribe?.();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const subtotalDollars = subtotalCents / 100;
 
   return (
     <View style={[styles.safe, { backgroundColor: colors.background }]}>
       <ScreenHeader title="Checkout" align="center" showBack />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={[styles.pageTitle, { color: colors.text }]}>Checkout</Text>
-        {checkoutRuntime.testMode && (
-          <View style={styles.testBanner}>
-            <Ionicons name="flask-outline" size={16} color="#FFFFFF" />
-            <Text style={styles.testBannerText}>
-              TEST MODE — owner testing. No real money moves.
-            </Text>
-          </View>
-        )}
 
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
           <View style={styles.secureRow}>
@@ -630,13 +548,13 @@ export default function Checkout() {
                 Secure In-App Checkout
               </Text>
               <Text style={[styles.secureSub, { color: colors.textMuted }]}>
-                Powered by Shopify
+                Powered by Stripe
               </Text>
             </View>
           </View>
           <Text style={[styles.secureBody, { color: colors.textMuted }]}>
             Fill in your details below, then pay right here in the app —
-            Shopify handles the payment securely and the app never sees your
+            Stripe handles the payment securely and the app never sees your
             card numbers.
           </Text>
         </View>
@@ -787,7 +705,6 @@ export default function Checkout() {
                 value={city}
                 onChangeText={setCity}
                 textContentType="addressCity"
-               
               />
             </View>
             <View style={styles.quarter}>
@@ -798,7 +715,6 @@ export default function Checkout() {
                 onChangeText={setProvince}
                 autoCapitalize="characters"
                 textContentType="addressState"
-               
               />
             </View>
             <View style={styles.quarter}>
@@ -822,7 +738,7 @@ export default function Checkout() {
               return (
                 <Pressable
                   key={c.code}
-                  onPress={() => setCountry(c.code)}
+                  onPress={() => onCountryChange(c.code)}
                   style={[
                     styles.countryChip,
                     {
@@ -857,6 +773,62 @@ export default function Checkout() {
             textContentType="telephoneNumber"
             autoComplete="tel"
           />
+        </View>
+
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          Shipping
+        </Text>
+        <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          {ratesLoading ? (
+            <Text style={[styles.emptyNote, { color: colors.textDim }]}>
+              Loading shipping options…
+            </Text>
+          ) : rates.length === 0 ? (
+            <Text style={[styles.emptyNote, { color: colors.textDim }]}>
+              Shipping options load at payment — the total updates before
+              you pay.
+            </Text>
+          ) : (
+            rates.map((r) => {
+              const selected = r.id === selectedRateId;
+              return (
+                <Pressable
+                  key={r.id}
+                  onPress={() => {
+                    setSelectedRateId(r.id);
+                    setPrepared(null);
+                  }}
+                  style={[
+                    styles.shipRow,
+                    {
+                      borderColor: selected ? colors.button : colors.border,
+                      backgroundColor: selected
+                        ? colors.surfaceRaised
+                        : "transparent",
+                    },
+                  ]}
+                >
+                  <View style={styles.shipMain}>
+                    <Text style={[styles.shipName, { color: colors.text }]}>
+                      {r.name}
+                    </Text>
+                    {r.deliveryText ? (
+                      <Text
+                        style={[styles.shipSub, { color: colors.textMuted }]}
+                      >
+                        {r.deliveryText}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.shipPrice, { color: colors.text }]}>
+                    {r.priceCents === 0
+                      ? "Free"
+                      : fmtDollars(r.priceCents / 100)}
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
         </View>
 
         <Text style={[styles.sectionTitle, { color: colors.text }]}>
@@ -903,9 +875,7 @@ export default function Checkout() {
           <Text style={[styles.promoNote, { color: colors.textMuted }]}>
             {promoCodes.length >= 2
               ? "Two codes on this order — that's the max."
-              : isInAppCheckoutEnabled()
-                ? "Add up to 2 codes — each one is checked against our store the moment you apply it."
-                : "Add up to 2 codes. They sync straight to your Shopify checkout."}
+              : "Add up to 2 codes — each one is checked against our store the moment you apply it. Only the first code rides the payment; extras are flagged at checkout."}
           </Text>
         </View>
 
@@ -918,7 +888,7 @@ export default function Checkout() {
               Items
             </Text>
             <Text style={[styles.summaryValue, { color: colors.text }]}>
-              {cartCount}
+              {itemCount}
             </Text>
           </View>
           <View style={styles.summaryRow}>
@@ -926,36 +896,28 @@ export default function Checkout() {
               Subtotal
             </Text>
             <Text style={[styles.summaryValue, { color: colors.text }]}>
-              {formatMoney(subtotal)}
+              {fmtDollars(subtotalDollars)}
             </Text>
           </View>
-          {promoTotals &&
-          Number(subtotal.amount) - promoTotals.subtotal > 0.004 ? (
+          {promoTotals && subtotalDollars - promoTotals.subtotal > 0.004 ? (
             <View style={styles.summaryRow}>
               <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>
                 Discount
               </Text>
               <Text style={[styles.summaryValue, { color: colors.text }]}>
-                −
-                {formatMoney({
-                  amount: (
-                    Number(subtotal.amount) - promoTotals.subtotal
-                  ).toFixed(2),
-                  currencyCode: promoTotals.currency,
-                })}
+                −{fmtDollars(subtotalDollars - promoTotals.subtotal)}
               </Text>
             </View>
           ) : null}
-          {promoTotals && promoTotals.shipping > 0 ? (
+          {promoTotals ? (
             <View style={styles.summaryRow}>
               <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>
                 Shipping
               </Text>
               <Text style={[styles.summaryValue, { color: colors.text }]}>
-                {formatMoney({
-                  amount: promoTotals.shipping.toFixed(2),
-                  currencyCode: promoTotals.currency,
-                })}
+                {promoTotals.shipping === 0
+                  ? "Free"
+                  : fmtDollars(promoTotals.shipping)}
               </Text>
             </View>
           ) : null}
@@ -965,10 +927,7 @@ export default function Checkout() {
                 Tax
               </Text>
               <Text style={[styles.summaryValue, { color: colors.text }]}>
-                {formatMoney({
-                  amount: promoTotals.tax.toFixed(2),
-                  currencyCode: promoTotals.currency,
-                })}
+                {fmtDollars(promoTotals.tax)}
               </Text>
             </View>
           ) : null}
@@ -976,22 +935,17 @@ export default function Checkout() {
           <View style={styles.summaryRow}>
             <Text style={[styles.totalLabel, { color: colors.text }]}>Total</Text>
             <Text style={[styles.totalValue, { color: colors.text }]}>
-              {formatMoney(
-                promoTotals
-                  ? {
-                      amount: promoTotals.total.toFixed(2),
-                      currencyCode: promoTotals.currency,
-                    }
-                  : subtotal
-              )}
+              {promoTotals
+                ? fmtDollars(promoTotals.total)
+                : fmtDollars(subtotalDollars)}
             </Text>
           </View>
-          {promoTotals && promoTotals.shipping === 0 ? (
+          {!promoTotals && (
             <Text style={[styles.emptyNote, { color: colors.textDim }]}>
               Shipping & tax calculated at payment.
             </Text>
-          ) : null}
-          {cartLines.length === 0 && (
+          )}
+          {intentLines.length === 0 && (
             <Text style={[styles.emptyNote, { color: colors.textDim }]}>
               Your cart is empty — add items before checking out.
             </Text>
@@ -1002,10 +956,7 @@ export default function Checkout() {
           Accepted Payment Methods
         </Text>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
-          {(isInAppCheckoutEnabled()
-            ? IN_APP_PAYMENT_METHODS
-            : PAYMENT_METHODS
-          ).map((m) => (
+          {IN_APP_PAYMENT_METHODS.map((m) => (
             <View key={m.label} style={styles.payRow}>
               <Ionicons name={m.icon} size={20} color={colors.text} />
               <Text style={[styles.payLabel, { color: colors.text }]}>
@@ -1025,7 +976,7 @@ export default function Checkout() {
         <PrimaryButton
           label={busy ? "Starting checkout…" : "Continue to Payment"}
           onPress={onPay}
-          disabled={cartLines.length === 0 || busy}
+          disabled={intentLines.length === 0 || busy}
           icon={
             <Ionicons name="lock-closed-outline" size={18} color={colors.buttonText} />
           }
@@ -1047,23 +998,6 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     letterSpacing: -0.3,
     marginBottom: Spacing.md,
-  },
-  testBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "#111111",
-    borderRadius: Radius.lg,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginTop: -Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  testBannerText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-    flex: 1,
   },
   card: {
     borderRadius: Radius.xl,
@@ -1122,6 +1056,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   countryLabel: { fontSize: 14 },
+  shipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  shipMain: { flex: 1, gap: 2 },
+  shipName: { fontSize: 14, fontWeight: "700" },
+  shipSub: { fontSize: 12 },
+  shipPrice: { fontSize: 14, fontWeight: "800" },
   promoRow: {
     flexDirection: "row",
     alignItems: "flex-end",

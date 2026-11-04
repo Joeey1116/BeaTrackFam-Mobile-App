@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { StripeProvider } from "@stripe/stripe-react-native";
@@ -6,11 +6,7 @@ import { ThemeProvider, useTheme } from "../components/ThemeProvider";
 import { ShopProvider } from "../store/shop";
 import { usePushNotifications } from "../lib/push";
 import { useLaunchPermissions } from "../lib/launchPermissions";
-import { APPLE_MERCHANT_ID } from "../lib/checkoutConfig";
-import {
-  hydrateCheckoutMode,
-  useCheckoutRuntime,
-} from "../lib/checkoutMode";
+import { APPLE_MERCHANT_ID, stripeProviderKey } from "../lib/checkoutConfig";
 
 function ThemedStatusBar() {
   const { isDark } = useTheme();
@@ -20,14 +16,9 @@ function ThemedStatusBar() {
 export default function RootLayout() {
   usePushNotifications();
   useLaunchPermissions();
-  const runtime = useCheckoutRuntime();
-  useEffect(() => {
-    void hydrateCheckoutMode();
-  }, []);
-  const providerKey =
-    runtime.publishableKey.trim().length > 10
-      ? runtime.publishableKey.trim()
-      : "pk_test_not_configured";
+  // Live site checkout only — the site backend has no per-device test
+  // mode, so there is no checkout runtime to hydrate anymore.
+  const providerKey = stripeProviderKey();
   return (
     <StripeProvider
       key={providerKey}

@@ -68,7 +68,7 @@ export default function EditProfile() {
           keyboardType="default"
         />
         <Text style={[styles.note, { color: colors.textDim }]}>
-          Your sign-in email is managed securely by Shopify and can&apos;t be
+          Your sign-in email is managed securely by the store and can&apos;t be
           changed here.
         </Text>
         <View style={styles.cta}>

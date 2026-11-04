@@ -1,4 +1,4 @@
-/** Delete Account — removes the device-local app account. */
+/** Delete Account — removes the app-side account. */
 import React, { useState } from "react";
 import { Alert, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -21,11 +21,11 @@ export default function DeleteAccount() {
   const [erasing, setErasing] = useState(false);
   const [password, setPassword] = useState("");
 
-  const onRequestShopifyDelete = () => {
+  const onRequestDataDelete = () => {
     const email = account?.email ?? "";
     const subject = encodeURIComponent("Delete my BeaTrackFam customer data");
     const body = encodeURIComponent(
-      `Hi BeaTrackFam,\n\nPlease delete the Shopify customer record associated with this email: ${email}\n\nThanks.`
+      `Hi BeaTrackFam,\n\nPlease delete the BeaTrackFam customer record associated with this email: ${email}\n\nThanks.`
     );
     Linking.openURL(
       `mailto:contact@beatrackfam.info?subject=${subject}&body=${body}`
@@ -44,7 +44,7 @@ export default function DeleteAccount() {
     }
     Alert.alert(
       "Delete your account?",
-      "This permanently removes your BeaTrackFam account — your registration, profile, saved addresses and order history in the app. Your email is freed up, so coming back means signing up again. Orders already placed stay in Shopify's records (email us below if you want those removed too).",
+      "This removes your BeaTrackFam account from this app. The store keeps your account registration until you ask us to remove it below — deleting here does not free your email for a fresh sign-up. Orders already placed stay in the store's records (email us below if you want those removed too).",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -100,10 +100,11 @@ export default function DeleteAccount() {
           </Text>
           <Text style={[styles.cardBody, { color: colors.textMuted }]}>
             Your BeaTrackFam account is registered with us (that&apos;s how
-            logging back in works after a reinstall) — deleting removes
-            that registration and everything on this phone with it. Enter
-            your password below so a borrowed phone can&apos;t do this to
-            you.
+            logging back in works after a reinstall) — deleting here
+            removes your account from this phone only. To remove the
+            store-side registration too, use the email request below.
+            Enter your password below so a borrowed phone can&apos;t do
+            this to you.
           </Text>
         </View>
 
@@ -128,16 +129,16 @@ export default function DeleteAccount() {
         <View style={styles.divider} />
 
         <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          Shopify order records
+          Store records
         </Text>
         <Text style={[styles.cardBody, { color: colors.textMuted }]}>
-          Orders you placed live in Shopify&apos;s records too. Email us and
+          Orders you placed live in the store&apos;s records too. Email us and
           we&apos;ll remove your customer data there by hand.
         </Text>
         <View style={styles.gap} />
         <OutlineButton
-          label="Request Shopify Data Deletion"
-          onPress={onRequestShopifyDelete}
+          label="Request Data Deletion"
+          onPress={onRequestDataDelete}
         />
 
         <View style={styles.divider} />

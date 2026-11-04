@@ -9,11 +9,15 @@
  * and a human handoff: live chat through Shopify Inbox (app/shop-chat)
  * or email. She never invents products, prices, orders or promo codes.
  */
-import type { CustomerOrder } from "./customer";
-import type { AppAccount, OrderReceipt } from "./accounts";
+import {
+  formatCents,
+  type AppAccount,
+  type OrderReceipt,
+  type SiteOrderSummary,
+} from "./accounts";
 import { formatMoney, type Product } from "./shopify";
 import { FAQS, scoreFaq, type FaqEntry } from "../data/faq";
-import { receiptStatusLabel, shopifyStatusLabel } from "./inbox";
+import { receiptStatusLabel, siteStatusLabel } from "./inbox";
 import {
   HOURS_CONFIGURED,
   SUPPORT_EMAIL,
@@ -30,7 +34,7 @@ export type BeaRoute =
   | { pathname: "/settings/design-request" }
   | { pathname: "/profile/addresses" }
   | { pathname: "/(tabs)/collections" }
-  | { pathname: "/settings/order/shopify"; params: { id: string } }
+  | { pathname: "/settings/order/[id]"; params: { id: string } }
   | { pathname: "/settings/order/[id]"; params: { id: string } }
   | { pathname: "/product/[id]"; params: { id: string } }
   | { pathname: "/settings/policies/[slug]"; params: { slug: string } }
@@ -56,7 +60,7 @@ export interface BeaContext {
   products: Product[];
   account: AppAccount | null;
   localOrders: OrderReceipt[];
-  shopifyOrders: CustomerOrder[];
+  siteOrders: SiteOrderSummary[];
 }
 
 const lc = (s: string) => s.toLowerCase().trim();
@@ -135,19 +139,19 @@ export function searchProducts(
 /* ------------------------------ Order replies ---------------------------- */
 
 function latestOrderReply(ctx: BeaContext): BeaReply {
-  const latestShopify = [...ctx.shopifyOrders].sort(
-    (a, b) => Date.parse(b.processedAt) - Date.parse(a.processedAt)
+  const latestSite = [...ctx.siteOrders].sort(
+    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
   )[0];
-  if (latestShopify) {
-    const status = shopifyStatusLabel(latestShopify);
+  if (latestSite) {
+    const status = siteStatusLabel(latestSite.status);
     return {
-      text: `Your latest order ${latestShopify.name} is ${status.toLowerCase()} — placed ${dateLabel(latestShopify.processedAt)}, ${formatMoney(latestShopify.totalPrice)} total. Tap below for the full details and tracking.`,
+      text: `Your latest order ${latestSite.number} is ${status.toLowerCase()} — placed ${dateLabel(latestSite.createdAt)}, ${formatCents(latestSite.totalCents)} total. Tap below for the full details and tracking.`,
       actions: [
         {
-          label: `View order ${latestShopify.name}`,
+          label: `View order ${latestSite.number}`,
           route: {
-            pathname: "/settings/order/shopify",
-            params: { id: latestShopify.id },
+            pathname: "/settings/order/[id]",
+            params: { id: latestSite.number },
           },
         },
         ORDERS_ACTION,
@@ -180,7 +184,7 @@ function latestOrderReply(ctx: BeaContext): BeaReply {
     };
   }
   return {
-    text: `I can check that for you — open Order History and either continue with your email (Shopify sends you a sign-in code) or use the guest lookup with your order number + the email from checkout.`,
+    text: `I can check that for you — open Order History and either sign in with your BeaTrackFam account email or use the guest lookup with your order number + the email from checkout.`,
     actions: [ORDERS_ACTION, HUMAN_ACTION],
   };
 }
@@ -188,17 +192,17 @@ function latestOrderReply(ctx: BeaContext): BeaReply {
 function orderNumberReply(ctx: BeaContext, digits: string): BeaReply {
   const matchDigits = (name: string) =>
     name.replace(/\D/g, "") === digits;
-  const shopifyHit = ctx.shopifyOrders.find((o) => matchDigits(o.name));
-  if (shopifyHit) {
-    const status = shopifyStatusLabel(shopifyHit);
+  const siteHit = ctx.siteOrders.find((o) => matchDigits(o.number));
+  if (siteHit) {
+    const status = siteStatusLabel(siteHit.status);
     return {
-      text: `Found it — order ${shopifyHit.name} is ${status.toLowerCase()} (placed ${dateLabel(shopifyHit.processedAt)}, ${formatMoney(shopifyHit.totalPrice)}). Tap below for details and tracking.`,
+      text: `Found it — order ${siteHit.number} is ${status.toLowerCase()} (placed ${dateLabel(siteHit.createdAt)}, ${formatCents(siteHit.totalCents)}). Tap below for details and tracking.`,
       actions: [
         {
-          label: `View order ${shopifyHit.name}`,
+          label: `View order ${siteHit.number}`,
           route: {
-            pathname: "/settings/order/shopify",
-            params: { id: shopifyHit.id },
+            pathname: "/settings/order/[id]",
+            params: { id: siteHit.number },
           },
         },
       ],

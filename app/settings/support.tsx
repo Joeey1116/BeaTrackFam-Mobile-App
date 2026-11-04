@@ -39,16 +39,16 @@ import {
 import { POLICIES } from "../../data/policies";
 import { useShop } from "../../store/shop";
 import {
-  loadShopifySession,
+  loadSiteOrders,
   receiptStatusLabel,
-  shopifyStatusLabel,
+  siteStatusLabel,
 } from "../../lib/inbox";
 import {
   HOURS_CONFIGURED,
   isOpenNow,
   nextOpeningLabel,
 } from "../../lib/supportConfig";
-import type { CustomerOrder } from "../../lib/customer";
+import type { SiteOrderSummary } from "../../lib/accounts";
 
 const CONTACT_EMAIL = "contact@beatrackfam.info";
 
@@ -98,15 +98,15 @@ export default function CustomerService() {
 
   const [query, setQuery] = useState("");
   const [expandedTopic, setExpandedTopic] = useState<FaqTopicId | null>(null);
-  const [shopifyOrders, setShopifyOrders] = useState<CustomerOrder[]>([]);
+  const [siteOrders, setSiteOrders] = useState<SiteOrderSummary[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const session = await loadShopifySession({ refresh: true });
+      const orders = await loadSiteOrders({ refresh: true });
       if (cancelled) return;
-      setShopifyOrders(session?.customer.orders ?? []);
+      setSiteOrders(orders);
       setOrdersLoading(false);
     })();
     return () => {
@@ -120,15 +120,15 @@ export default function CustomerService() {
   );
 
   const orderRows: OrderRow[] = [
-    ...shopifyOrders.map<OrderRow>((o) => ({
-      key: `sh-${o.id}`,
-      title: `Order ${o.name}`,
-      sub: shopifyStatusLabel(o),
-      at: Date.parse(o.processedAt) || 0,
+    ...siteOrders.map<OrderRow>((o) => ({
+      key: `sh-${o.number}`,
+      title: `Order ${o.number}`,
+      sub: siteStatusLabel(o.status),
+      at: Date.parse(o.createdAt) || 0,
       onPress: () =>
         router.push({
-          pathname: "/settings/order/shopify",
-          params: { id: o.id },
+          pathname: "/settings/order/[id]",
+          params: { id: o.number },
         }),
     })),
     ...localOrders.map<OrderRow>((o) => ({

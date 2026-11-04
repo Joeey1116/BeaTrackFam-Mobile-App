@@ -1,6 +1,14 @@
-/** Order detail — full receipt view with line items and cancellation. */
-import React, { useState } from "react";
+/** Order detail — full receipt view with line items and cancellation.
+ *
+ * Two kinds of id land here:
+ *  - a local receipt id (recorded at in-app checkout) — the original view;
+ *  - a site order number (BTF-YYYYMMDD-XXXX) — live detail from
+ *    GET /api/account/orders/{number}, with tracking when shipped.
+ * The old Shopify detail screen is gone; site orders open here.
+ */
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Linking,
@@ -19,7 +27,13 @@ import {
   ScreenHeader,
 } from "../../../components/ui";
 import { formatMoney, useShop } from "../../../store/shop";
-import type { OrderReceipt } from "../../../lib/accounts";
+import {
+  fetchSiteOrderDetail,
+  formatCents,
+  siteOrderStatusLabel,
+  type OrderReceipt,
+  type SiteOrderDetail as SiteDetail,
+} from "../../../lib/accounts";
 import { Radius, Spacing } from "../../../constants/theme";
 
 const CONTACT_EMAIL = "contact@beatrackfam.info";
@@ -41,13 +55,17 @@ function formatDateTime(iso: string): string {
 
 function StatusChip({ status }: { status: string }) {
   const { isDark } = useTheme();
-  const cancelled = status === "cancelled";
+  const cancelled = status === "cancelled" || status === "Cancelled";
   const requested = status === "cancellation-requested";
+  // Local receipts use completed/cancelled; site orders pass their
+  // display label straight through (Processing, Shipped, …).
   const label = cancelled
     ? "Cancelled"
     : requested
       ? "Cancellation requested"
-      : "Completed";
+      : status === "completed"
+        ? "Completed"
+        : status;
   const fg = cancelled ? "#E5484D" : requested ? "#B7791F" : "#2E9E5B";
   const bg = cancelled
     ? isDark
@@ -99,6 +117,199 @@ function ItemRow({ item }: { item: OrderReceipt["items"][number] }) {
   );
 }
 
+/** Live site-order detail (BTF-… numbers). Signed-in fetch; on a
+ * 401 the gate says to sign in rather than showing a bogus empty page. */
+function SiteOrderDetailView({ number }: { number: string }) {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const [detail, setDetail] = useState<SiteDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchSiteOrderDetail(number)
+      .then((d) => {
+        if (!cancelled) setDetail(d);
+      })
+      .catch((e) => {
+        if (!cancelled)
+          setError(e instanceof Error ? e.message : "Couldn't load that order.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [number]);
+
+  if (loading) {
+    return (
+      <View style={[styles.safe, { backgroundColor: colors.background }]}>
+        <ScreenHeader title={`Order · ${number}`} align="center" showBack />
+        <ActivityIndicator color={colors.text} style={styles.gate} />
+      </View>
+    );
+  }
+
+  if (!detail || error) {
+    return (
+      <View style={[styles.safe, { backgroundColor: colors.background }]}>
+        <ScreenHeader title={`Order · ${number}`} align="center" showBack />
+        <View style={styles.gate}>
+          <EmptyState
+            icon={<Ionicons name="receipt-outline" size={48} color={colors.textDim} />}
+            title="Order not found"
+            subtitle={error ?? "This order isn't in your history."}
+          />
+          <PrimaryButton
+            label="Back to Order History"
+            onPress={() => router.back()}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  const addr = detail.shippingAddress;
+  const addrLines = [
+    detail.customerName ?? "",
+    addr.address1 ?? "",
+    addr.address2 ?? "",
+    [addr.city ?? "", addr.state ?? "", addr.postal ?? ""]
+      .filter(Boolean)
+      .join(" "),
+    addr.country ?? "",
+  ].filter(Boolean);
+
+  return (
+    <View style={[styles.safe, { backgroundColor: colors.background }]}>
+      <ScreenHeader title={`Order · ${detail.number}`} align="center" showBack />
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <View style={styles.statusRow}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Status</Text>
+            <StatusChip status={siteOrderStatusLabel(detail.status)} />
+          </View>
+          <Text style={[styles.note, { color: colors.textMuted }]}>
+            Placed {formatDateTime(detail.createdAt)} · live from the store.
+          </Text>
+          {detail.trackingNumber ? (
+            <Text style={[styles.note, { color: colors.textMuted }]}>
+              Tracking: {detail.trackingNumber}
+            </Text>
+          ) : null}
+          {detail.trackingUrl ? (
+            <OutlineButton
+              label="Track Package"
+              onPress={() => Linking.openURL(detail.trackingUrl!).catch(() => {})}
+            />
+          ) : null}
+        </View>
+
+        <Text style={[styles.heading, { color: colors.text }]}>
+          Items ({detail.items.length} {detail.items.length === 1 ? "line" : "lines"})
+        </Text>
+        {detail.items.map((item, i) => (
+          <View
+            key={`${item.handle}-${item.variantLabel}-${i}`}
+            style={[styles.itemRow, { backgroundColor: colors.surface }]}
+          >
+            <View style={[styles.thumb, styles.thumbFallback, { backgroundColor: colors.surfaceRaised }]}>
+              <Ionicons name="image-outline" size={22} color={colors.textDim} />
+            </View>
+            <View style={styles.itemMain}>
+              <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={2}>
+                {item.title}
+              </Text>
+              <Text style={[styles.itemSub, { color: colors.textMuted }]}>
+                {item.variantLabel} · Qty {item.qty}
+              </Text>
+              <Text style={[styles.itemPrice, { color: colors.text }]}>
+                {formatCents(item.unitPriceCents)} each
+              </Text>
+            </View>
+            <Text style={[styles.lineTotal, { color: colors.text }]}>
+              {formatCents(item.lineTotalCents)}
+            </Text>
+          </View>
+        ))}
+
+        <Text style={[styles.heading, { color: colors.text }]}>Summary</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <View style={styles.kv}>
+            <Text style={[styles.kvLabel, { color: colors.textMuted }]}>Subtotal</Text>
+            <Text style={[styles.kvValue, { color: colors.text }]}>
+              {formatCents(detail.subtotalCents)}
+            </Text>
+          </View>
+          {detail.discountCents > 0 && (
+            <View style={styles.kv}>
+              <Text style={[styles.kvLabel, { color: colors.textMuted }]}>Discount</Text>
+              <Text style={[styles.kvValue, { color: colors.text }]}>
+                −{formatCents(detail.discountCents)}
+              </Text>
+            </View>
+          )}
+          <View style={styles.kv}>
+            <Text style={[styles.kvLabel, { color: colors.textMuted }]}>Shipping</Text>
+            <Text style={[styles.kvValue, { color: colors.text }]}>
+              {detail.shippingCents === null
+                ? "—"
+                : detail.shippingCents === 0
+                  ? "Free"
+                  : formatCents(detail.shippingCents)}
+            </Text>
+          </View>
+          {detail.taxCents > 0 && (
+            <View style={styles.kv}>
+              <Text style={[styles.kvLabel, { color: colors.textMuted }]}>Tax</Text>
+              <Text style={[styles.kvValue, { color: colors.text }]}>
+                {formatCents(detail.taxCents)}
+              </Text>
+            </View>
+          )}
+          <View style={styles.kv}>
+            <Text style={[styles.kvLabel, { color: colors.textMuted }]}>Total</Text>
+            <Text style={[styles.kvValue, { color: colors.text }]}>
+              {formatCents(detail.totalCents)}
+            </Text>
+          </View>
+        </View>
+
+        {addrLines.length > 0 && (
+          <>
+            <Text style={[styles.heading, { color: colors.text }]}>Shipping To</Text>
+            <View style={[styles.card, { backgroundColor: colors.surface }]}>
+              {addrLines.map((line) => (
+                <Text key={line} style={[styles.note, { color: colors.text }]}>
+                  {line}
+                </Text>
+              ))}
+            </View>
+          </>
+        )}
+
+        <View style={styles.ctas}>
+          <OutlineButton
+            label="Request Cancellation"
+            onPress={() => {
+              const subject = encodeURIComponent(`Cancel order ${detail.number}`);
+              const body = encodeURIComponent(
+                `Hi BeaTrackFam,\n\nPlease cancel my order ${detail.number} (placed ${formatDateTime(detail.createdAt)}, total ${formatCents(detail.totalCents)}).\n\nThanks!`
+              );
+              Linking.openURL(
+                `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`
+              ).catch(() => {});
+            }}
+          />
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
 export default function OrderDetail() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -107,6 +318,9 @@ export default function OrderDetail() {
   const [cancelling, setCancelling] = useState(false);
 
   const order = orders.find((o) => o.id === id);
+  if (!order && typeof id === "string" && id.toUpperCase().startsWith("BTF-")) {
+    return <SiteOrderDetailView number={id} />;
+  }
   const status = order?.status ?? "completed";
 
   if (!order) {

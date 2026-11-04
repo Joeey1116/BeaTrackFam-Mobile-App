@@ -20,7 +20,7 @@ import {
   TextField,
 } from "../../components/ui";
 import { useShop } from "../../store/shop";
-import type { LocalAddress } from "../../lib/customer";
+import type { LocalAddress } from "../../lib/accounts";
 import { Radius, Spacing } from "../../constants/theme";
 
 const EMPTY_FORM = {

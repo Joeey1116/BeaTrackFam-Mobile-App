@@ -12,7 +12,7 @@ import { useRouter } from "expo-router";
 import { useTheme } from "../../components/ThemeProvider";
 import { PrimaryButton, ScreenHeader, TextField } from "../../components/ui";
 import { useShop } from "../../store/shop";
-import type { SocialHandles } from "../../lib/customer";
+import type { SocialHandles } from "../../lib/accounts";
 import { Spacing } from "../../constants/theme";
 
 const FIELDS: { key: keyof SocialHandles; label: string; placeholder: string }[] = [
