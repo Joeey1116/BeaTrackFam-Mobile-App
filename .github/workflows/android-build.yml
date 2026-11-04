@@ -177,7 +177,6 @@ jobs:
           track: production
           status: completed
           whatsNewDirectory: play-whatsnew
-          changesNotSentForReview: 'true'
 
       - name: Remove the keystore
         if: always()
