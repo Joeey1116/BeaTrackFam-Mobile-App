@@ -16,13 +16,14 @@ import { TopBar } from "../../components/TopBar";
 import { ProductImage } from "../../components/ProductImage";
 import { useShop } from "../../store/shop";
 import type { Product } from "../../data/mock";
+import { productCompareAtCents, productMinPriceCents } from "../../data/mock";
 import { Radius, Spacing, TabBarClearance } from "../../constants/theme";
 
 function WishlistRow({ product }: { product: Product }) {
   const { colors } = useTheme();
   const router = useRouter();
   const { removeFromWishlist } = useShop();
-  const routeId = product.numericId;
+  const routeId = product.handle;
 
   return (
     <Pressable
@@ -38,16 +39,23 @@ function WishlistRow({ product }: { product: Product }) {
           {product.title}
         </Text>
         <Text style={[styles.rowPrice, { color: colors.text }]}>
-          ${Number(product.price.amount).toFixed(2)}
+          {(() => {
+            const min = productMinPriceCents(product);
+            return min === null ? "" : `$${(min / 100).toFixed(2)}`;
+          })()}
         </Text>
-        {product.compareAtPrice && (
-          <Text style={[styles.rowCompare, { color: colors.textDim }]}>
-            Up to ${Number(product.compareAtPrice.amount).toFixed(2)}
-          </Text>
-        )}
+        {(() => {
+          const compare = productCompareAtCents(product);
+          const min = productMinPriceCents(product);
+          return compare !== null && min !== null && compare > min ? (
+            <Text style={[styles.rowCompare, { color: colors.textDim }]}>
+              Up to ${((compare) / 100).toFixed(2)}
+            </Text>
+          ) : null;
+        })()}
       </View>
       <Pressable
-        onPress={() => removeFromWishlist(product.id)}
+        onPress={() => removeFromWishlist(product.handle)}
         hitSlop={12}
         accessibilityLabel={`Remove ${product.title} from wishlist`}
       >
@@ -60,7 +68,7 @@ function WishlistRow({ product }: { product: Product }) {
 export default function Wishlist() {
   const { colors } = useTheme();
   const { wishlistIds, products, catalogLoading, refreshCatalog } = useShop();
-  const items = products.filter((p) => wishlistIds.includes(p.id));
+  const items = products.filter((p) => wishlistIds.includes(p.handle));
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = () => {
@@ -83,7 +91,7 @@ export default function Wishlist() {
       </Text>
       <FlatList
         data={items}
-        keyExtractor={(p) => p.id}
+        keyExtractor={(p) => p.handle}
         renderItem={({ item }) => <WishlistRow product={item} />}
         refreshControl={
           <RefreshControl

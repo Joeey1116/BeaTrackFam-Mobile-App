@@ -1,4 +1,5 @@
-/** Product Details — screen-08 blueprint, live Shopify data. */
+/** Product Details — live Cloudflare catalog data. The /product/[id]
+ *  route param is the product HANDLE (not a Shopify numeric id). */
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Pressable,
@@ -8,7 +9,6 @@ import {
   Text,
   View,
 } from "react-native";
-import * as Linking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "../../components/ThemeProvider";
@@ -19,7 +19,11 @@ import { ProductGallery } from "../../components/ProductGallery";
 import { Reviews } from "../../components/Reviews";
 import { useShop } from "../../store/shop";
 import { Radius, Spacing, Type } from "../../constants/theme";
-import { fetchProductMedia, type ProductMedia } from "../../lib/storefront";
+import {
+  formatMoney,
+  productAvailable,
+  productOptionGroups,
+} from "../../lib/shopify";
 import { isReviewsConfigured } from "../../lib/reviews";
 
 export default function ProductDetails() {
@@ -31,98 +35,81 @@ export default function ProductDetails() {
     addToCart,
     toggleWishlist,
     isWishlisted,
-    isVariantPurchasable,
     catalogLoading,
     refreshCatalog,
   } = useShop();
 
+  // Route param is the product handle.
   const product = getProduct(id ?? "");
 
   const firstAvailable =
-    product?.variants.find((v) => v.availableForSale) ??
-    product?.variants[0];
+    product?.variants.find((v) => v.available) ?? product?.variants[0];
 
   const [selected, setSelected] = useState<Record<string, string> | null>(null);
   const [quantity, setQuantity] = useState(1);
 
-  // Full gallery media (per-variant images) from Storefront GraphQL.
-  // Falls back to the cached products.json images when the fetch fails.
-  // The numeric id is stored alongside so a stale fetch from a previously
-  // viewed product can never flash its images here.
-  const [mediaState, setMediaState] = useState<{
-    id: string;
-    media: ProductMedia;
-  } | null>(null);
-  const [mediaNonce, setMediaNonce] = useState(0);
-  const [mediaFetching, setMediaFetching] = useState(false);
-  useEffect(() => {
-    const numericId = product?.numericId;
-    if (!numericId) return;
-    let cancelled = false;
-    fetchProductMedia(numericId)
-      .then((m) => {
-        if (!cancelled && m.images.length > 0) {
-          setMediaState({ id: numericId, media: m });
-        }
-      })
-      .catch(() => {
-        // Fallback: keep using product.images from products.json.
-      })
-      .finally(() => {
-        if (!cancelled) setMediaFetching(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [product?.numericId, mediaNonce]);
+  // Option groups derived from variant positions (D1 carries no option
+  // names): group i = distinct values at options[i] across variants.
+  const optionGroups = useMemo(
+    () => (product ? productOptionGroups(product) : []),
+    [product]
+  );
 
-  // Pull-to-refresh: reload the catalog (fresh product record) and
-  // re-fetch this product's gallery media.
+  // Pull-to-refresh: reload the catalog (fresh product record).
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = () => {
     setRefreshing(true);
     refreshCatalog();
-    setMediaFetching(true);
-    setMediaNonce((n) => n + 1);
   };
 
-  // End the spin once both reloads settle (min 400ms, no flicker).
   useEffect(() => {
-    if (!refreshing || catalogLoading || mediaFetching) return;
+    if (!refreshing || catalogLoading) return;
     const t = setTimeout(() => setRefreshing(false), 400);
     return () => clearTimeout(t);
-  }, [refreshing, catalogLoading, mediaFetching]);
+  }, [refreshing, catalogLoading]);
 
-  const liveMedia =
-    mediaState && product && mediaState.id === product.numericId
-      ? mediaState.media
-      : null;
-
-  // Resolve the variant matching the chosen options (default: first available).
+  // Resolve the variant matching the chosen options (default: first
+  // available). No fallback to a different variant: an unmatched
+  // combination is genuinely unavailable, not a silent substitution.
   const variant = useMemo(() => {
     if (!product) return undefined;
     if (!selected) return firstAvailable;
-    const opts = [selected[product.options[0]?.name ?? ""], selected[product.options[1]?.name ?? ""], selected[product.options[2]?.name ?? ""]];
-    return (
-      product.variants.find(
-        (v) =>
-          (product.options[0] ? v.option1 === opts[0] : true) &&
-          (product.options[1] ? v.option2 === opts[1] : true) &&
-          (product.options[2] ? v.option3 === opts[2] : true)
-      ) ?? firstAvailable
+    return product.variants.find((v) =>
+      optionGroups.every(
+        (group, i) =>
+          selected[group.name] === undefined ||
+          v.options[i] === selected[group.name]
+      )
     );
-  }, [product, selected, firstAvailable]);
+  }, [product, selected, firstAvailable, optionGroups]);
 
   const effectiveSelected = useMemo(() => {
     if (selected) return selected;
     if (!product || !firstAvailable) return {};
     const s: Record<string, string> = {};
-    product.options.forEach((opt, i) => {
-      const val = [firstAvailable.option1, firstAvailable.option2, firstAvailable.option3][i];
-      if (val) s[opt.name] = val;
+    optionGroups.forEach((group, i) => {
+      const val = firstAvailable.options[i];
+      if (val) s[group.name] = val;
     });
     return s;
-  }, [product, selected, firstAvailable]);
+  }, [product, selected, firstAvailable, optionGroups]);
+
+  // A value is unselectable when no AVAILABLE variant carries it at
+  // this position together with the other current selections.
+  const isValueUnavailable = (groupIndex: number, value: string) => {
+    if (!product) return true;
+    return !product.variants.some(
+      (v) =>
+        v.available &&
+        v.options[groupIndex] === value &&
+        optionGroups.every(
+          (group, i) =>
+            i === groupIndex ||
+            effectiveSelected[group.name] === undefined ||
+            v.options[i] === effectiveSelected[group.name]
+        )
+    );
+  };
 
   if (!product || !variant) {
     return (
@@ -130,34 +117,25 @@ export default function ProductDetails() {
         <ScreenHeader title="Product Details" align="center" showBack right={<CartButton />} />
         <View style={styles.missing}>
           <Text style={[styles.missingText, { color: colors.textMuted }]}>
-            Product not found.
+            {product && product.variants.length === 0
+              ? "This item isn't available yet."
+              : "Product not found."}
           </Text>
         </View>
       </View>
     );
   }
 
-  const wished = isWishlisted(product.id);
-  const soldOut = !product.availableForSale;
-  // In the catalog (online-store channel) but not published to the app
-  // sales channel: show it, but send buyers to the website instead of
-  // into a checkout Shopify will refuse.
-  const websiteOnly = !soldOut && !isVariantPurchasable(variant.id);
-  const purchasable = variant.availableForSale && !soldOut;
-
-  const galleryImages =
-    liveMedia && liveMedia.images.length > 0 ? liveMedia.images : product.images;
-  const variantImageUrl = liveMedia?.variantImageById[variant.id] ?? null;
+  const wished = isWishlisted(product.handle);
+  const soldOut = !productAvailable(product);
+  const purchasable = variant.available && !soldOut;
 
   const MAX_QTY = 10;
 
   const onAdd = () => {
+    if (!purchasable) return;
     addToCart(product, variant, quantity);
     router.push("/cart");
-  };
-
-  const onWebsite = () => {
-    void Linking.openURL(`https://beatrackfam.info/products/${product.handle}`);
   };
 
   return (
@@ -176,13 +154,10 @@ export default function ProductDetails() {
         }
       >
         <View style={styles.galleryBleed}>
-          <ProductGallery
-            images={galleryImages}
-            variantImageUrl={variantImageUrl}
-            rounded={0}
-          />
+          {/* Product images only — D1 has no per-variant images. */}
+          <ProductGallery images={product.images} rounded={0} />
           <Pressable
-            onPress={() => toggleWishlist(product.id)}
+            onPress={() => toggleWishlist(product.handle)}
             hitSlop={10}
             style={[styles.heart, { backgroundColor: colors.surfaceRaised }]}
             accessibilityLabel="Toggle wishlist"
@@ -198,28 +173,29 @@ export default function ProductDetails() {
         <Text style={[styles.title, Type.headline, { color: colors.text }]}>
           {product.title}
         </Text>
-        <Text style={[styles.vendor, Type.caption, { color: colors.textMuted }]}>
-          {product.vendor}
-        </Text>
+        {product.vendor.length > 0 && (
+          <Text style={[styles.vendor, Type.caption, { color: colors.textMuted }]}>
+            {product.vendor}
+          </Text>
+        )}
         <View style={styles.priceRow}>
           <Text style={[styles.price, { color: colors.text }]}>
-            ${Number(variant.price.amount).toFixed(2)}
+            {formatMoney(variant.price_cents)}
           </Text>
-          {variant.compareAtPrice &&
-            Number(variant.compareAtPrice.amount) >
-              Number(variant.price.amount) && (
+          {variant.compare_at_price_cents !== null &&
+            variant.compare_at_price_cents > variant.price_cents && (
               <Text style={[styles.compare, { color: colors.textDim }]}>
-                ${Number(variant.compareAtPrice.amount).toFixed(2)}
+                {formatMoney(variant.compare_at_price_cents)}
               </Text>
             )}
         </View>
-        {!variant.availableForSale && (
+        {!variant.available && (
           <Text style={[styles.unavailable, { color: colors.danger }]}>
             This option is currently sold out.
           </Text>
         )}
 
-        {product.options.map((opt) => {
+        {optionGroups.map((opt, groupIndex) => {
           // Long option lists (e.g. 8 sizes) would force a sideways
           // swipe through chips — those become a dropdown instead.
           const useDropdown = opt.values.length > 5;
@@ -234,7 +210,13 @@ export default function ProductDetails() {
               {useDropdown ? (
                 <NativeDropdown
                   value={effectiveSelected[opt.name] ?? ""}
-                  options={opt.values.map((v) => ({ value: v, label: v }))}
+                  options={opt.values.map((v) => ({
+                    value: v,
+                    label: isValueUnavailable(groupIndex, v)
+                      ? `${v} — sold out`
+                      : v,
+                    disabled: isValueUnavailable(groupIndex, v),
+                  }))}
                   onSelect={(val) =>
                     setSelected((s) => ({
                       ...(s ?? effectiveSelected),
@@ -252,9 +234,11 @@ export default function ProductDetails() {
                 >
                   {opt.values.map((val) => {
                     const isSelected = effectiveSelected[opt.name] === val;
+                    const unavailable = isValueUnavailable(groupIndex, val);
                     return (
                       <Pressable
                         key={val}
+                        disabled={unavailable}
                         onPress={() =>
                           setSelected((s) => ({ ...(s ?? effectiveSelected), [opt.name]: val }))
                         }
@@ -265,8 +249,10 @@ export default function ProductDetails() {
                             backgroundColor: isSelected
                               ? colors.button
                               : "transparent",
+                            opacity: unavailable ? 0.4 : 1,
                           },
                         ]}
+                        accessibilityState={{ disabled: unavailable }}
                       >
                         <Text
                           style={[
@@ -296,7 +282,7 @@ export default function ProductDetails() {
 
         {isReviewsConfigured() && (
           <Reviews
-            productNumericId={product.numericId}
+            productHandle={product.handle}
             productTitle={product.title}
           />
         )}
@@ -342,31 +328,17 @@ export default function ProductDetails() {
             </View>
           </View>
         )}
-        {websiteOnly ? (
-          <>
-            <PrimaryButton
-              label="Available on our website"
-              onPress={onWebsite}
-            />
-            <Text style={[styles.websiteNote, { color: colors.textMuted }]}>
-              This one is only on beatrackfam.info for now — app checkout for it
-              is coming.
-            </Text>
-          </>
-        ) : (
-          <PrimaryButton
-            label={soldOut ? "Sold Out" : "Add to Cart"}
-            onPress={onAdd}
-            disabled={soldOut || !variant.availableForSale}
-          />
-        )}
+        <PrimaryButton
+          label={soldOut ? "Sold Out" : "Add to Cart"}
+          onPress={onAdd}
+          disabled={soldOut || !variant.available}
+        />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  websiteNote: { fontSize: 12, textAlign: "center", marginTop: 10 },
   safe: { flex: 1 },
   content: { padding: Spacing.md, paddingBottom: Spacing.xl },
   missing: { flex: 1, alignItems: "center", justifyContent: "center" },

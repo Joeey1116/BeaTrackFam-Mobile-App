@@ -2,9 +2,9 @@
  * Inbox data layer (12.1.0 redesign, Phase 2).
  *
  * The Inbox is derived entirely from live store data — no backend feed:
- *  - the signed-in customer's Shopify orders with live status
- *    (Customer Account API session, lib/customer.ts),
- *  - app-account orders (local receipts + linked Shopify orders,
+ *  - the signed-in customer's site orders with live status
+ *    (GET /api/account/me, lib/accounts.ts),
+ *  - app-account orders (local receipts + linked site orders,
  *    lib/accounts.ts),
  *  - the newest catalog products as "Just dropped",
  *  - one welcome item.
@@ -15,15 +15,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  getStoredSession,
-  refreshSessionCustomer,
-  type CustomerOrder,
-  type CustomerSession,
-} from "./customer";
-import type {
-  AppAccount,
-  LinkedShopifyOrder,
-  OrderReceipt,
+  fetchSiteOrderList,
+  formatCents,
+  siteOrderStatusLabel,
+  type AppAccount,
+  type LinkedSiteOrder,
+  type OrderReceipt,
+  type SiteOrderSummary,
 } from "./accounts";
 import { formatMoney, type Product } from "./shopify";
 import { freshLocalReceipts, visibleLinkedOrders } from "./ordersCount";
@@ -33,7 +31,6 @@ const LAST_SEEN_KEY = "beatrackfam.inbox.lastSeen";
 const WELCOME_KEY = "beatrackfam.inbox.welcomeAt";
 /** First run: only the past week lights the bell, not the whole archive. */
 const FIRST_RUN_WINDOW_MS = 7 * 24 * 3600 * 1000;
-const MAX_DROP_ITEMS = 5;
 const MAX_ORDER_ITEMS = 10;
 
 /* ------------------------------ Item model ------------------------------ */
@@ -49,21 +46,11 @@ export interface InboxItem {
   body: string;
   /** Navigation payloads, mapped to routes by the Inbox screen. */
   orderId?: string;
-  orderSource?: "shopify" | "local";
-  productNumericId?: string;
+  orderSource?: "site" | "local";
 }
 
-export function shopifyStatusLabel(o: CustomerOrder): string {
-  if (o.cancelledAt) return "Cancelled";
-  switch ((o.fulfillmentStatus ?? "").toUpperCase()) {
-    case "FULFILLED":
-      return "Shipped";
-    case "PARTIALLY_FULFILLED":
-      return "Partly shipped";
-    default:
-      return "Processing";
-  }
-}
+/** Live status label for a site order (re-exported for Bea/Support). */
+export const siteStatusLabel = siteOrderStatusLabel;
 
 export function receiptStatusLabel(o: OrderReceipt): string {
   if (o.status === "cancelled") return "Cancelled";
@@ -80,8 +67,8 @@ function parseTs(iso: string | undefined | null): number {
 export interface InboxSources {
   account: AppAccount | null;
   localOrders: OrderReceipt[];
-  linkedOrders: LinkedShopifyOrder[];
-  shopifyOrders: CustomerOrder[];
+  linkedOrders: LinkedSiteOrder[];
+  siteOrders: SiteOrderSummary[];
   products: Product[];
   welcomeAt: number;
 }
@@ -99,35 +86,35 @@ export function buildInboxItems(src: InboxSources): InboxItem[] {
 
   const orderItems: InboxItem[] = [];
 
-  for (const o of src.shopifyOrders) {
-    const status = shopifyStatusLabel(o);
+  for (const o of src.siteOrders) {
+    const status = siteStatusLabel(o.status);
     orderItems.push({
-      id: `order-sh-${o.id}`,
+      id: `order-sh-${o.number}`,
       kind: "order",
-      at: parseTs(o.processedAt),
-      title: `Order ${o.name} — ${status}`,
-      body: `${formatMoney(o.totalPrice)} · tap for details & tracking`,
-      orderId: o.id,
-      orderSource: "shopify",
+      at: parseTs(o.createdAt),
+      title: `Order ${o.number} — ${status}`,
+      body: `${formatCents(o.totalCents)} · tap for details & tracking`,
+      orderId: o.number,
+      orderSource: "site",
     });
   }
 
-  for (const o of visibleLinkedOrders(src.shopifyOrders, src.linkedOrders)) {
-    // live Shopify copy already listed (visibleLinkedOrders dedupes)
+  for (const o of visibleLinkedOrders(src.siteOrders, src.linkedOrders)) {
+    // live site copy already listed (visibleLinkedOrders dedupes)
     orderItems.push({
-      id: `order-lk-${o.id}`,
+      id: `order-lk-${o.number}`,
       kind: "order",
-      at: parseTs(o.processedAt),
-      title: `Order ${o.name} — ${o.status}`,
+      at: parseTs(o.placedAt),
+      title: `Order ${o.number} — ${o.status}`,
       body: `${formatMoney({ amount: o.totalAmount, currencyCode: o.currencyCode })} · linked to your account`,
       // Linked orders are only navigable when the live record is loaded;
       // without it the row is informational.
     });
   }
 
-  // Local receipts whose Shopify twin has arrived are shown once, from
-  // Shopify (same rule as Order History — shared in lib/ordersCount.ts).
-  const freshLocal = freshLocalReceipts(src.shopifyOrders, src.localOrders);
+  // Local receipts whose site twin has arrived are shown once, from
+  // the site (same rule as Order History — shared in lib/ordersCount.ts).
+  const freshLocal = freshLocalReceipts(src.siteOrders, src.localOrders);
   for (const o of freshLocal) {
     const status = receiptStatusLabel(o);
     orderItems.push({
@@ -144,21 +131,10 @@ export function buildInboxItems(src: InboxSources): InboxItem[] {
   orderItems.sort((a, b) => b.at - a.at);
   items.push(...orderItems.slice(0, MAX_ORDER_ITEMS));
 
-  const drops = src.products
-    .map((p) => ({ p, at: parseTs(p.createdAt) }))
-    .filter((x) => x.at > 0)
-    .sort((a, b) => b.at - a.at)
-    .slice(0, MAX_DROP_ITEMS);
-  for (const { p, at } of drops) {
-    items.push({
-      id: `drop-${p.numericId}`,
-      kind: "drop",
-      at,
-      title: `Just dropped: ${p.title}`,
-      body: `${formatMoney(p.price)} · new in the shop`,
-      productNumericId: p.numericId,
-    });
-  }
+  // NOTE: the Cloudflare catalog carries no product creation date,
+  // so "Just dropped" items cannot be dated truthfully anymore and are
+  // omitted (inventing dates would fake newness and light the bell).
+  // If the backend later adds a created date, re-derive drops from it.
 
   return items.sort((a, b) => b.at - a.at);
 }
@@ -270,33 +246,33 @@ async function getWelcomeAt(account: AppAccount | null): Promise<number> {
   }
 }
 
-/* ------------------------- Shopify session loader ------------------------ */
+/* --------------------------- Site orders loader -------------------------- */
 /**
  * One cached loader shared by TopBar, Inbox, Customer Service and Ask
- * Bea, so opening a few screens doesn't refetch the customer record.
- * The stored session already carries orders; `refresh` asks Shopify for
- * fresh statuses (best effort — failures keep the stored copy).
+ * Bea, so opening a few screens doesn't refetch the account record.
+ * `refresh` bypasses the cache; failures keep the cached copy (or an
+ * empty list when nothing was ever loaded — e.g. no session token yet).
  */
-let sessionCache: { session: CustomerSession | null; at: number } | null =
-  null;
-const SESSION_TTL_MS = 60 * 1000;
+let ordersCache: { orders: SiteOrderSummary[]; at: number } | null = null;
+const ORDERS_TTL_MS = 60 * 1000;
 
-export async function loadShopifySession(
+export async function loadSiteOrders(
   opts?: { refresh?: boolean }
-): Promise<CustomerSession | null> {
+): Promise<SiteOrderSummary[]> {
   if (
     !opts?.refresh &&
-    sessionCache &&
-    Date.now() - sessionCache.at < SESSION_TTL_MS
+    ordersCache &&
+    Date.now() - ordersCache.at < ORDERS_TTL_MS
   ) {
-    return sessionCache.session;
+    return ordersCache.orders;
   }
-  let session = await getStoredSession();
-  if (session && opts?.refresh) {
-    session = await refreshSessionCustomer(session);
+  try {
+    const orders = (await fetchSiteOrderList()) ?? [];
+    ordersCache = { orders, at: Date.now() };
+    return orders;
+  } catch {
+    return ordersCache?.orders ?? [];
   }
-  sessionCache = { session, at: Date.now() };
-  return session;
 }
 
 /* --------------------------------- Hook --------------------------------- */
@@ -312,7 +288,7 @@ export interface UseInbox {
 
 export function useInbox(): UseInbox {
   const { account, orders: localOrders, products } = useShop();
-  const [shopifyOrders, setShopifyOrders] = useState<CustomerOrder[]>([]);
+  const [siteOrders, setSiteOrders] = useState<SiteOrderSummary[]>([]);
   const [lastSeen, setLastSeen] = useState<number | null>(null);
   const [welcomeAt, setWelcomeAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -328,14 +304,14 @@ export function useInbox(): UseInbox {
   useEffect(() => onInboxSeen((at) => setLastSeen(at)), []);
 
   const load = useCallback(
-    async (refreshSession = false) => {
-      const [session, seen, welcome] = await Promise.all([
-        loadShopifySession({ refresh: refreshSession }),
+    async (refreshOrders = false) => {
+      const [orders, seen, welcome] = await Promise.all([
+        loadSiteOrders({ refresh: refreshOrders }),
         getInboxLastSeen(),
         getWelcomeAt(account),
       ]);
       if (!mounted.current) return;
-      setShopifyOrders(session?.customer.orders ?? []);
+      setSiteOrders(orders);
       setLastSeen(seen);
       setWelcomeAt(welcome);
       setLoading(false);
@@ -352,12 +328,12 @@ export function useInbox(): UseInbox {
     return buildInboxItems({
       account,
       localOrders,
-      linkedOrders: account?.linkedShopifyOrders ?? [],
-      shopifyOrders,
+      linkedOrders: account?.linkedSiteOrders ?? [],
+      siteOrders,
       products,
       welcomeAt,
     });
-  }, [account, localOrders, shopifyOrders, products, welcomeAt]);
+  }, [account, localOrders, siteOrders, products, welcomeAt]);
 
   const unreadCount = useMemo(
     () =>

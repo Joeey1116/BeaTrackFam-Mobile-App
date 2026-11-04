@@ -62,12 +62,12 @@ function workerBase(): string {
  * Throws with a human-readable message on failure.
  */
 export async function fetchReviews(
-  productNumericId: string,
+  productHandle: string,
   page = 1,
   perPage = 5
 ): Promise<ReviewsPage> {
   const url =
-    `${workerBase()}/reviews?productId=${encodeURIComponent(productNumericId)}` +
+    `${workerBase()}/reviews?productId=${encodeURIComponent(productHandle)}` +
     `&page=${page}&perPage=${perPage}`;
   let res: Response;
   try {

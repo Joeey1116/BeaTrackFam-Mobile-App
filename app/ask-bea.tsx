@@ -31,7 +31,8 @@ import { useTheme } from "../components/ThemeProvider";
 import { ScreenHeader } from "../components/ui";
 import { ProductImage } from "../components/ProductImage";
 import { Radius, Spacing, Type } from "../constants/theme";
-import { useShop, formatMoney } from "../store/shop";
+import { useShop } from "../store/shop";
+import { productAvailable, productMinPriceCents } from "../data/mock";
 import type { Product } from "../data/mock";
 import type { FaqEntry } from "../data/faq";
 import {
@@ -40,8 +41,8 @@ import {
   type BeaAction,
   type BeaReply,
 } from "../lib/bea";
-import { loadShopifySession } from "../lib/inbox";
-import type { CustomerOrder } from "../lib/customer";
+import { loadSiteOrders } from "../lib/inbox";
+import type { SiteOrderSummary } from "../lib/accounts";
 
 interface ChatMessage {
   id: number;
@@ -76,7 +77,7 @@ export default function AskBea() {
   const { colors } = useTheme();
   const router = useRouter();
   const { products, account, orders: localOrders } = useShop();
-  const [shopifyOrders, setShopifyOrders] = useState<CustomerOrder[]>([]);
+  const [siteOrders, setSiteOrders] = useState<SiteOrderSummary[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     {
       id: nextId(),
@@ -92,8 +93,8 @@ export default function AskBea() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const session = await loadShopifySession({ refresh: true });
-      if (!cancelled) setShopifyOrders(session?.customer.orders ?? []);
+      const orders = await loadSiteOrders({ refresh: true });
+      if (!cancelled) setSiteOrders(orders);
     })();
     return () => {
       cancelled = true;
@@ -109,8 +110,8 @@ export default function AskBea() {
   }, [messages]);
 
   const ctx = useMemo(
-    () => ({ products, account, localOrders, shopifyOrders }),
-    [products, account, localOrders, shopifyOrders]
+    () => ({ products, account, localOrders, siteOrders }),
+    [products, account, localOrders, siteOrders]
   );
 
   const pushReply = useCallback((reply: BeaReply) => {
@@ -152,7 +153,7 @@ export default function AskBea() {
   };
 
   const openProduct = (p: Product) =>
-    router.push({ pathname: "/product/[id]", params: { id: p.numericId } });
+    router.push({ pathname: "/product/[id]", params: { id: p.handle } });
 
   return (
     <View style={[styles.safe, { backgroundColor: colors.background }]}>
@@ -197,7 +198,7 @@ export default function AskBea() {
 
                   {msg.products?.map((p) => (
                     <Pressable
-                      key={p.id}
+                      key={p.handle}
                       onPress={() => openProduct(p)}
                       style={({ pressed }) => [
                         styles.productCard,
@@ -222,8 +223,11 @@ export default function AskBea() {
                         <Text
                           style={[Type.caption, { color: colors.textMuted }]}
                         >
-                          {formatMoney(p.price)}
-                          {p.availableForSale ? "" : " · sold out"}
+                          {(() => {
+                            const min = productMinPriceCents(p);
+                            return min === null ? "" : `$${(min / 100).toFixed(2)}`;
+                          })()}
+                          {productAvailable(p) ? "" : " · sold out"}
                         </Text>
                       </View>
                       <Ionicons

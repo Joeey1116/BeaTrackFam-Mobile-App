@@ -26,34 +26,34 @@ function CartRow({ line }: { line: CartLine }) {
 
   return (
     <View style={[styles.row, { backgroundColor: colors.surface }]}>
-      <ProductImage image={line.product.images[0] ?? null} size={72} rounded={Radius.md} iconSize={28} />
+      <ProductImage image={line.image || null} size={72} rounded={Radius.md} iconSize={28} />
       <View style={styles.rowMain}>
         <Text
           style={[Type.title, { color: colors.text }]}
           numberOfLines={2}
         >
-          {line.product.title}
+          {line.title}
         </Text>
         <Text style={[styles.rowVariant, { color: colors.textMuted }]}>
           {line.variantTitle}
         </Text>
         <Text style={[styles.rowPrice, { color: colors.text }]}>
-          {formatMoney(line.unitPrice)}
+          {formatMoney(line.price_cents)}
         </Text>
         <View style={styles.stepperRow}>
           <View style={[styles.stepper, { borderColor: colors.border }]}>
             <Pressable
-              onPress={() => updateQuantity(line.id, line.quantity - 1)}
+              onPress={() => updateQuantity(line.handle, line.variantTitle, line.qty - 1)}
               hitSlop={10}
               style={styles.stepperBtn}
             >
               <Ionicons name="remove" size={16} color={colors.text} />
             </Pressable>
             <Text style={[styles.qty, { color: colors.text }]}>
-              {line.quantity}
+              {line.qty}
             </Text>
             <Pressable
-              onPress={() => updateQuantity(line.id, line.quantity + 1)}
+              onPress={() => updateQuantity(line.handle, line.variantTitle, line.qty + 1)}
               hitSlop={10}
               style={styles.stepperBtn}
             >
@@ -61,7 +61,7 @@ function CartRow({ line }: { line: CartLine }) {
             </Pressable>
           </View>
           <Pressable
-            onPress={() => removeLine(line.id)}
+            onPress={() => removeLine(line.handle, line.variantTitle)}
             hitSlop={10}
             accessibilityLabel="Remove item"
           >
@@ -91,7 +91,7 @@ export default function Cart() {
         <>
           <ScrollView contentContainerStyle={styles.list}>
             {cartLines.map((line) => (
-              <CartRow key={line.id} line={line} />
+              <CartRow key={`${line.handle}::${line.variantTitle}`} line={line} />
             ))}
             <View style={styles.totals}>
               <View style={styles.totalRow}>

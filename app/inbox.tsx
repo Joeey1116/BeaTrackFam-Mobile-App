@@ -77,20 +77,15 @@ export default function Inbox() {
   };
 
   const openItem = (item: InboxItem) => {
-    if (item.orderId && item.orderSource === "shopify") {
+    if (item.orderId && item.orderSource === "site") {
       router.push({
-        pathname: "/settings/order/shopify",
+        pathname: "/settings/order/[id]",
         params: { id: item.orderId },
       });
     } else if (item.orderId && item.orderSource === "local") {
       router.push({
         pathname: "/settings/order/[id]",
         params: { id: item.orderId },
-      });
-    } else if (item.productNumericId) {
-      router.push({
-        pathname: "/product/[id]",
-        params: { id: item.productNumericId },
       });
     } else if (item.kind === "welcome") {
       router.push("/(tabs)/collections");

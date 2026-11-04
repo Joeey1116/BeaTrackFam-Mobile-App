@@ -1,121 +1,193 @@
 /**
- * Shopify data layer — live BeaTrackFam catalog.
+ * Cloudflare data layer — live BeaTrackFam catalog.
  *
- * The app reads the store's PUBLIC storefront JSON endpoints
- * (the same feeds every Shopify theme uses), so the catalog is always
- * Joey's real products, collections, images and prices — no API key
- * ships in the app and new products appear automatically.
+ * The app reads ONE public endpoint from the Cloudflare storefront
+ * (no API key ships in the app, no Shopify calls of any kind):
  *
- * Future upgrade path: swap the fetch functions below for Storefront
- * API GraphQL (needs a storefront access token) to get cartCreate /
- * Customer Account API. The types already mirror Storefront shapes.
+ *   GET https://beatrackfam.info/api/catalog
+ *
+ * The payload shape is the binding contract shared with checkout:
+ * products keyed by handle, variants keyed by full variant title,
+ * money in integer cents only. See
+ * ~/workspace/beatrackfam-migration/api-catalog-contract.md.
+ *
+ * Real-data rules enforced here (never papered over):
+ * - Products with zero priced variants (unpriced seed rows only in D1)
+ *   are NOT buyable: `isBuyableProduct` is false for them and the
+ *   listing fetchers below exclude them from shop listings.
+ * - `compare_at_price_cents` is null for every variant today: null
+ *   means "no compare-at price" — never render a null price.
+ * - Unavailable variants stay in the payload so pickers can grey them
+ *   out, but they must never enter the cart (see store/shop.tsx).
+ * - D1 has NO per-variant images: variants carry no image field and
+ *   none is invented. Screens use the product images only.
  */
 
 export const STOREFRONT_DOMAIN = "beatrackfam.info";
-const API_BASE = `https://${STOREFRONT_DOMAIN}`;
+export const CATALOG_URL = `https://${STOREFRONT_DOMAIN}/api/catalog`;
 
 /* ---------------------------------- Types ---------------------------------- */
 
-export interface MoneyV2 {
-  amount: string; // decimal string, e.g. "19.71"
-  currencyCode: string;
-}
-
-export interface ShopifyImage {
-  url: string;
-  altText: string | null;
-  width: number;
-  height: number;
-}
-
+/** Binding contract: one priced variant of one product. */
 export interface ProductVariant {
-  /** Numeric REST variant id as a string — used for cart permalinks. */
-  id: string;
-  title: string; // e.g. "Black / S"
-  price: MoneyV2;
-  compareAtPrice: MoneyV2 | null;
-  availableForSale: boolean;
-  option1: string | null;
-  option2: string | null;
-  option3: string | null;
+  /** Full variant title, e.g. "S / Black". */
+  title: string;
+  /** Title split on " / " (position order, no option names in D1). */
+  options: string[];
+  /** Integer cents. */
+  price_cents: number;
+  /** Integer cents, or null = no compare-at price. */
+  compare_at_price_cents: number | null;
+  available: boolean;
 }
 
-export interface ProductOption {
-  name: string; // e.g. "Size"
+/** Binding contract: one catalog product, keyed by handle. */
+export interface Product {
+  handle: string;
+  title: string;
+  /** "" for every product today (catalog_product_meta is empty). */
+  vendor: string;
+  description: string;
+  /** Main R2 URL. */
+  image: string;
+  /** R2 URLs — [main image] today; a gallery array if admin sets one. */
+  images: string[];
+  collection_title: string;
+  tags: string[];
+  /** [] for products with only unpriced seed rows in D1. */
+  variants: ProductVariant[];
+}
+
+/** Binding contract: one catalog collection. */
+export interface Collection {
+  handle: string;
+  title: string;
+  /** R2 URL. */
+  image: string;
+  /** Handles of the visible products in this collection, in order. */
+  product_handles: string[];
+}
+
+/** Raw GET /api/catalog payload. */
+export interface CatalogResponse {
+  products: Product[];
+  collections: Collection[];
+}
+
+/** Binding contract: one cart line. Money in integer cents only. */
+export interface CartLine {
+  handle: string;
+  variantTitle: string;
+  /** Product title. */
+  title: string;
+  /** Integer cents (unit price). */
+  price_cents: number;
+  qty: number;
+  /** Product main image URL. */
+  image: string;
+}
+
+/** Checkout intent items are built as { handle, variant: variantTitle, qty }. */
+export interface CheckoutIntentItem {
+  handle: string;
+  variant: string;
+  qty: number;
+}
+
+export function cartLineToIntentItem(line: CartLine): CheckoutIntentItem {
+  return { handle: line.handle, variant: line.variantTitle, qty: line.qty };
+}
+
+/* ---------------------------------- Money ---------------------------------- */
+
+/**
+ * Formats money. New code passes integer cents; the MoneyV2 object form
+ * is kept so existing order/checkout screens that still hold
+ * { amount, currencyCode } keep compiling and rendering identically.
+ */
+export function formatMoney(cents: number): string;
+export function formatMoney(m: { amount: string; currencyCode: string }): string;
+export function formatMoney(
+  value: number | { amount: string; currencyCode: string }
+): string {
+  if (typeof value === "number") {
+    return `$${(value / 100).toFixed(2)}`;
+  }
+  return `$${Number(value.amount).toFixed(2)}`;
+}
+
+/** Integer-cents formatting for a single value (same as formatMoney). */
+export const formatCents = (cents: number): string => formatMoney(cents);
+
+/* ------------------------------ Product helpers ----------------------------- */
+
+/** False for the zero-variant products (unpriced seed rows only). */
+export function isBuyableProduct(p: Product): boolean {
+  return p.variants.length > 0;
+}
+
+/** True when at least one variant can be bought right now. */
+export function productAvailable(p: Product): boolean {
+  return p.variants.some((v) => v.available);
+}
+
+/** Lowest priced-variant price in cents, or null when unbuyable. */
+export function productMinPriceCents(p: Product): number | null {
+  if (p.variants.length === 0) return null;
+  return Math.min(...p.variants.map((v) => v.price_cents));
+}
+
+/**
+ * Highest compare-at price in cents, or null when no variant has one
+ * (null today for every variant — callers must treat null as "no sale").
+ */
+export function productCompareAtCents(p: Product): number | null {
+  const values = p.variants
+    .map((v) => v.compare_at_price_cents)
+    .filter((v): v is number => v !== null);
+  return values.length > 0 ? Math.max(...values) : null;
+}
+
+export interface ProductOptionGroup {
+  /** D1 carries no option names, so groups are positional ("Option 1"...). */
+  name: string;
   values: string[];
 }
 
-/** Shape mirrors Storefront API Product (trimmed). */
-export interface Product {
-  id: string; // gid://shopify/Product/<n>
-  /** Numeric id tail — used as the /product/[id] route param. */
-  numericId: string;
-  title: string;
-  handle: string;
-  vendor: string;
-  description: string;
-  images: ShopifyImage[];
-  variants: ProductVariant[];
-  options: ProductOption[];
-  /** Min available variant price — for cards/grids. */
-  price: MoneyV2;
-  compareAtPrice: MoneyV2 | null;
-  availableForSale: boolean;
-  /** ISO creation timestamp from Shopify (products.json `created_at`). */
-  createdAt?: string;
-}
-
-/** Shape mirrors Storefront API Collection (trimmed). */
-export interface Collection {
-  id: string; // gid://shopify/Collection/<n>
-  title: string;
-  handle: string;
-  image: ShopifyImage | null;
-  productsCount: number;
-}
-
-export interface CartLine {
-  id: string;
-  product: Product;
-  variantId: string;
-  variantTitle: string;
-  unitPrice: MoneyV2;
-  quantity: number;
-}
-
-/** Placeholder until Customer Account API is wired. */
-export interface Order {
-  id: string;
-  name: string;
-  processedAt: string;
-  fulfillmentStatus: "DELIVERED" | "IN_TRANSIT" | "PROCESSING";
-  totalPrice: MoneyV2;
-  itemCount: number;
-}
-
-/** Placeholder until Customer Account API is wired. */
-export interface User {
-  firstName: string;
-  lastName: string;
-  email: string;
-}
-
-export function formatMoney(m: MoneyV2): string {
-  return `$${Number(m.amount).toFixed(2)}`;
+/**
+ * Option pickers derived from variant positions: group i collects the
+ * distinct option values at index i across all variants, in first-seen
+ * order. Single-option products yield one group.
+ */
+export function productOptionGroups(p: Product): ProductOptionGroup[] {
+  const maxOptions = p.variants.reduce(
+    (max, v) => Math.max(max, v.options.length),
+    0
+  );
+  const groups: ProductOptionGroup[] = [];
+  for (let i = 0; i < maxOptions; i += 1) {
+    const values: string[] = [];
+    for (const v of p.variants) {
+      const val = v.options[i];
+      if (val !== undefined && !values.includes(val)) values.push(val);
+    }
+    groups.push({ name: `Option ${i + 1}`, values });
+  }
+  return groups;
 }
 
 /* --------------------------------- Fetching --------------------------------- */
 
-async function getJson<T>(path: string): Promise<T> {
+async function getJson<T>(url: string): Promise<T> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(url, {
       signal: ctrl.signal,
       headers: { Accept: "application/json" },
     });
     if (!res.ok) {
-      throw new Error(`Shopify request failed (${res.status}) for ${path}`);
+      throw new Error(`Catalog request failed (${res.status}) for ${url}`);
     }
     return (await res.json()) as T;
   } finally {
@@ -123,158 +195,94 @@ async function getJson<T>(path: string): Promise<T> {
   }
 }
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h\d)>/gi, "\n")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-const usd = (amount: string): MoneyV2 => ({ amount, currencyCode: "USD" });
-
-interface RestImage {
-  src: string;
-  alt?: string | null;
-  width?: number;
-  height?: number;
-}
-
-interface RestVariant {
-  id: number;
-  title: string;
-  price: string;
-  compare_at_price: string | null;
-  available: boolean;
-  option1: string | null;
-  option2: string | null;
-  option3: string | null;
-}
-
-interface RestProduct {
-  id: number;
-  title: string;
-  handle: string;
-  vendor: string;
-  body_html: string;
-  created_at?: string;
-  images: RestImage[];
-  variants: RestVariant[];
-  options: { name: string; values: string[] }[];
-}
-
-function toImage(img: RestImage): ShopifyImage {
+function normalizeVariant(v: ProductVariant): ProductVariant {
   return {
-    url: img.src,
-    altText: img.alt ?? null,
-    width: img.width ?? 1024,
-    height: img.height ?? 1024,
+    title: v.title ?? "",
+    options: Array.isArray(v.options) ? v.options : [],
+    price_cents: v.price_cents,
+    compare_at_price_cents: v.compare_at_price_cents ?? null,
+    available: v.available === true,
   };
 }
 
-function toVariant(v: RestVariant): ProductVariant {
+function normalizeProduct(p: Product): Product {
   return {
-    id: String(v.id),
-    title: v.title,
-    price: usd(v.price),
-    compareAtPrice: v.compare_at_price ? usd(v.compare_at_price) : null,
-    availableForSale: v.available,
-    option1: v.option1,
-    option2: v.option2,
-    option3: v.option3,
+    handle: p.handle ?? "",
+    title: p.title ?? "",
+    vendor: p.vendor ?? "",
+    description: p.description ?? "",
+    image: p.image ?? "",
+    images: Array.isArray(p.images) && p.images.length > 0
+      ? p.images
+      : p.image
+        ? [p.image]
+        : [],
+    collection_title: p.collection_title ?? "",
+    tags: Array.isArray(p.tags) ? p.tags : [],
+    variants: Array.isArray(p.variants) ? p.variants.map(normalizeVariant) : [],
   };
 }
 
-export function normalizeProduct(p: RestProduct): Product {
-  const variants = p.variants.map(toVariant);
-  const available = variants.filter((v) => v.availableForSale);
-  const priced = (available.length > 0 ? available : variants).filter((v) =>
-    Number.isFinite(Number(v.price.amount))
-  );
-  const minPrice = priced.reduce(
-    (min, v) => (Number(v.price.amount) < Number(min.price.amount) ? v : min),
-    priced[0] ?? toVariant(p.variants[0])
-  );
-  const anyAvailable = variants.some((v) => v.availableForSale);
-
+function normalizeCollection(c: Collection): Collection {
   return {
-    id: `gid://shopify/Product/${p.id}`,
-    numericId: String(p.id),
-    title: p.title,
-    handle: p.handle,
-    vendor: p.vendor || "BeaTrackFam",
-    description: p.body_html ? stripHtml(p.body_html) : "",
-    images: p.images.map(toImage),
-    variants,
-    options: (p.options ?? [])
-      .filter((o) => o.name.toLowerCase() !== "title" || o.values.length > 1)
-      .map((o) => ({ name: o.name, values: o.values })),
-    price: minPrice.price,
-    compareAtPrice: minPrice.compareAtPrice,
-    availableForSale: anyAvailable,
-    createdAt: p.created_at,
+    handle: c.handle ?? "",
+    title: c.title ?? "",
+    image: c.image ?? "",
+    product_handles: Array.isArray(c.product_handles)
+      ? c.product_handles
+      : [],
   };
 }
 
-interface RestCollection {
-  id: number;
-  title: string;
-  handle: string;
-  image: RestImage | null;
-  products_count: number;
-}
-
-function normalizeCollection(c: RestCollection): Collection {
+function normalizeCatalog(data: CatalogResponse): CatalogResponse {
   return {
-    id: `gid://shopify/Collection/${c.id}`,
-    title: c.title,
-    handle: c.handle,
-    image: c.image ? toImage(c.image) : null,
-    productsCount: c.products_count ?? 0,
+    products: (data.products ?? []).map(normalizeProduct),
+    collections: (data.collections ?? []).map(normalizeCollection),
   };
 }
 
-/** All live products (online-store channel). */
+/**
+ * Module-level cache for the single catalog call, matching the app's
+ * existing refresh pattern: the store fetches on mount and on
+ * pull-to-refresh (force), and screens filter the loaded catalog
+ * locally instead of refetching per collection.
+ */
+let catalogCache: Promise<CatalogResponse> | null = null;
+
+export function fetchCatalog(force = false): Promise<CatalogResponse> {
+  if (!force && catalogCache) return catalogCache;
+  catalogCache = getJson<CatalogResponse>(CATALOG_URL).then(normalizeCatalog);
+  // A failed fetch must not poison the cache for the next retry.
+  catalogCache.catch(() => {
+    catalogCache = null;
+  });
+  return catalogCache;
+}
+
+/** Buyable products only — zero-variant products are excluded. */
 export async function fetchProducts(): Promise<Product[]> {
-  const data = await getJson<{ products: RestProduct[] }>(
-    "/products.json?limit=250"
-  );
-  return data.products.map(normalizeProduct);
+  const data = await fetchCatalog();
+  return data.products.filter(isBuyableProduct);
 }
 
-/** All live collections. */
+/** All collections from the catalog payload. */
 export async function fetchCollections(): Promise<Collection[]> {
-  const data = await getJson<{ collections: RestCollection[] }>(
-    "/collections.json?limit=250"
-  );
-  return data.collections.map(normalizeCollection);
+  const data = await fetchCatalog();
+  return data.collections;
 }
 
-/** Live products inside one collection. */
+/**
+ * Buyable products of one collection, in the collection's own
+ * product_handles order. Filters the loaded catalog — no extra call.
+ */
 export async function fetchCollectionProducts(
   handle: string
 ): Promise<Product[]> {
-  const data = await getJson<{ products: RestProduct[] }>(
-    `/collections/${handle}/products.json?limit=250`
-  );
-  return data.products.map(normalizeProduct);
-}
-
-/* --------------------------------- Checkout --------------------------------- */
-
-/**
- * Shopify cart permalink — opens the customer's real Shopify checkout
- * (Apple Pay / Google Pay / cards) with these exact variants preloaded.
- * No API token required.
- */
-export function buildCartPermalink(lines: CartLine[]): string {
-  const items = lines.map((l) => `${l.variantId}:${l.quantity}`).join(",");
-  return `${API_BASE}/cart/${items}`;
+  const data = await fetchCatalog();
+  const collection = data.collections.find((c) => c.handle === handle);
+  if (!collection) return [];
+  const byHandle = new Map(data.products.map((p) => [p.handle, p]));
+  return collection.product_handles
+    .map((h) => byHandle.get(h))
+    .filter((p): p is Product => p !== undefined && isBuyableProduct(p));
 }

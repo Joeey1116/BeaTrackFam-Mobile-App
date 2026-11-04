@@ -17,18 +17,19 @@ import { PrimaryButton } from "../../components/ui";
 import { TopBar } from "../../components/TopBar";
 import { ProductImage } from "../../components/ProductImage";
 import { useShop } from "../../store/shop";
-import { fetchCollectionProducts, type Collection, type Product } from "../../data/mock";
+import type { Collection, Product } from "../../data/mock";
+import { productMinPriceCents } from "../../data/mock";
 import { Radius, Spacing, TabBarClearance } from "../../constants/theme";
 
 function ShopProductCard({ product }: { product: Product }) {
   const { colors } = useTheme();
   const router = useRouter();
   const { isWishlisted, toggleWishlist } = useShop();
-  const wished = isWishlisted(product.id);
+  const wished = isWishlisted(product.handle);
 
   return (
     <Pressable
-      onPress={() => router.push(`/product/${product.numericId}`)}
+      onPress={() => router.push(`/product/${product.handle}`)}
       style={({ pressed }) => [styles.card, { opacity: pressed ? 0.85 : 1 }]}
     >
       <View>
@@ -39,7 +40,7 @@ function ShopProductCard({ product }: { product: Product }) {
           rounded={Radius.lg}
         />
         <Pressable
-          onPress={() => toggleWishlist(product.id)}
+          onPress={() => toggleWishlist(product.handle)}
           hitSlop={10}
           style={[styles.heart, { backgroundColor: colors.surfaceRaised }]}
         >
@@ -54,7 +55,10 @@ function ShopProductCard({ product }: { product: Product }) {
         {product.title}
       </Text>
       <Text style={[styles.cardPrice, { color: colors.text }]}>
-        ${Number(product.price.amount).toFixed(2)}
+        {(() => {
+          const min = productMinPriceCents(product);
+          return min === null ? "" : `$${(min / 100).toFixed(2)}`;
+        })()}
       </Text>
     </Pressable>
   );
@@ -75,62 +79,44 @@ export default function Collections() {
   }>();
   const [query, setQuery] = useState("");
   const [activeCollection, setActiveCollection] = useState<Collection | null>(null);
-  const [collectionProducts, setCollectionProducts] = useState<Product[] | null>(null);
-  const [collectionLoading, setCollectionLoading] = useState(false);
-  const cache = useRef(new Map<string, Product[]>());
   const handledCollectionParam = useRef<string | undefined>(undefined);
   const handledQParam = useRef<string | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadCollection = async (c: Collection) => {
-    setActiveCollection(c);
-    const cached = cache.current.get(c.handle);
-    if (cached) {
-      setCollectionProducts(cached);
-      return;
-    }
-    setCollectionLoading(true);
-    try {
-      const ps = await fetchCollectionProducts(c.handle);
-      cache.current.set(c.handle, ps);
-      setCollectionProducts(ps);
-    } catch {
-      setCollectionProducts([]);
-    } finally {
-      setCollectionLoading(false);
-    }
-  };
+  // Collection products filter the loaded catalog by the collection's
+  // product_handles (catalog order) — no per-collection fetch.
+  const collectionProducts = useMemo(() => {
+    if (!activeCollection) return null;
+    const byHandle = new Map(products.map((p) => [p.handle, p]));
+    return activeCollection.product_handles
+      .map((h) => byHandle.get(h))
+      .filter((p): p is Product => p !== undefined);
+  }, [activeCollection, products]);
 
   const onSelectCollection = (c: Collection) => {
-    if (activeCollection?.id === c.id) {
+    if (activeCollection?.handle === c.handle) {
       setActiveCollection(null);
-      setCollectionProducts(null);
       return;
     }
-    void loadCollection(c);
+    setActiveCollection(c);
   };
 
-  // Pull-to-refresh: fresh catalog, and if a collection is open,
-  // refetch its products too (bypassing the per-collection cache).
+  // Pull-to-refresh: fresh catalog; the collection grid re-derives
+  // from it automatically.
   const onRefresh = async () => {
     setRefreshing(true);
     refreshCatalog();
-    if (activeCollection) {
-      cache.current.delete(activeCollection.handle);
-      await loadCollection(activeCollection);
-    }
   };
 
   // End the spin once every reload settles (min 400ms, no flicker).
   useEffect(() => {
-    if (!refreshing || catalogLoading || collectionLoading) return;
+    if (!refreshing || catalogLoading) return;
     const t = setTimeout(() => setRefreshing(false), 400);
     return () => clearTimeout(t);
-  }, [refreshing, catalogLoading, collectionLoading]);
+  }, [refreshing, catalogLoading]);
 
   const clearCollection = () => {
     setActiveCollection(null);
-    setCollectionProducts(null);
   };
 
   // Deep link from Home (featured collections, banner slideshow): open that collection.
@@ -145,7 +131,7 @@ export default function Collections() {
       if (match) {
         // Defer a tick: route params are an external system, so the
         // selection sync runs outside the effect body.
-        const t = setTimeout(() => void loadCollection(match), 0);
+        const t = setTimeout(() => setActiveCollection(match), 0);
         return () => clearTimeout(t);
       }
     }
@@ -250,10 +236,10 @@ export default function Collections() {
               </Text>
             </Pressable>
             {collections.map((c) => {
-              const active = activeCollection?.id === c.id;
+              const active = activeCollection?.handle === c.handle;
               return (
                 <Pressable
-                  key={c.id}
+                  key={c.handle}
                   onPress={() => onSelectCollection(c)}
                   style={({ pressed }) => [
                     styles.chip,
@@ -287,22 +273,14 @@ export default function Collections() {
             </Text>
           </View>
 
-          {collectionLoading ? (
-            <ActivityIndicator
-              size="small"
-              color={colors.text}
-              style={styles.gridLoader}
-            />
-          ) : (
-            <View style={styles.grid}>
-              {visible.map((p) => (
-                <View key={p.id} style={styles.gridItem}>
-                  <ShopProductCard product={p} />
-                </View>
-              ))}
-            </View>
-          )}
-          {!collectionLoading && visible.length === 0 && (
+          <View style={styles.grid}>
+            {visible.map((p) => (
+              <View key={p.handle} style={styles.gridItem}>
+                <ShopProductCard product={p} />
+              </View>
+            ))}
+          </View>
+          {visible.length === 0 && (
             <Text style={[styles.noResults, { color: colors.textMuted }]}>
               {query
                 ? `No products match "${query}".`

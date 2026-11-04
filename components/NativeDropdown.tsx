@@ -39,6 +39,8 @@ try {
 export interface NativeDropdownOption {
   value: string;
   label: string;
+  /** Greyed out and unselectable (e.g. no available variant). */
+  disabled?: boolean;
 }
 
 type DropdownProps = {
@@ -160,6 +162,7 @@ function AnchoredMenuDropdown({ value, options, onSelect, accessibilityLabel }: 
                     return (
                       <Pressable
                         key={option.value}
+                        disabled={option.disabled}
                         onPress={() => pick(option.value)}
                         style={({ pressed }) => [
                           styles.row,
@@ -168,10 +171,11 @@ function AnchoredMenuDropdown({ value, options, onSelect, accessibilityLabel }: 
                             borderTopColor: colors.border,
                           },
                           selected && { backgroundColor: colors.input },
-                          pressed && { backgroundColor: colors.surface },
+                          pressed && !option.disabled && { backgroundColor: colors.surface },
+                          option.disabled && { opacity: 0.4 },
                         ]}
                         accessibilityRole="button"
-                        accessibilityState={{ selected }}
+                        accessibilityState={{ selected, disabled: option.disabled }}
                       >
                         <View style={styles.checkSlot}>
                           {selected ? (

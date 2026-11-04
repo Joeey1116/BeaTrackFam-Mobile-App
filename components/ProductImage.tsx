@@ -1,16 +1,23 @@
 /**
- * Product artwork — renders the real Shopify CDN image when available,
- * falling back to a tinted tile with a shirt glyph while loading or when
- * a product has no image.
+ * Product artwork — renders the real product image (R2 URL) when
+ * available, falling back to a tinted tile with a shirt glyph while
+ * loading or when a product has no image.
  */
 import React, { useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "./ThemeProvider";
-import type { ShopifyImage } from "../data/mock";
+
+/** Catalog images are plain URL strings; the object form is accepted
+ *  for call sites that still build one. */
+export type ProductImageSource =
+  | string
+  | { url: string; altText?: string | null }
+  | null
+  | undefined;
 
 interface ProductImageProps {
-  image?: ShopifyImage | null;
+  image?: ProductImageSource;
   /** Fallback tile color when there is no image (or while it loads). */
   tint?: string;
   size?: number;
@@ -45,11 +52,13 @@ export function ProductImage({
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const showImage = !!image?.url && !failed;
+  const url = typeof image === "string" ? image : image?.url;
+  const altText = typeof image === "string" ? null : image?.altText ?? null;
+  const showImage = !!url && !failed;
   const tileColor = tint ?? colors.surfaceRaised;
   // 2x the tile's display width for retina sharpness, capped by the helper.
-  const imageUrl = image?.url
-    ? sizedShopifyUrl(image.url, fullWidth ? 1080 : size ? size * 2 : 720)
+  const imageUrl = url
+    ? sizedShopifyUrl(url, fullWidth ? 1080 : size ? size * 2 : 720)
     : undefined;
 
   return (
@@ -75,7 +84,7 @@ export function ProductImage({
       {showImage ? (
         <Image
           source={{ uri: imageUrl }}
-          accessibilityLabel={image!.altText ?? undefined}
+          accessibilityLabel={altText ?? undefined}
           onLoad={() => setLoaded(true)}
           onError={() => setFailed(true)}
           style={[

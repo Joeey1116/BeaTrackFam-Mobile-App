@@ -151,10 +151,11 @@ function RatingSummary({ page }: { page: ReviewsPage }) {
 }
 
 export function Reviews({
-  productNumericId,
+  productHandle,
   productTitle,
 }: {
-  productNumericId: string;
+  /** Catalog handle — the reviews worker keys by productId. */
+  productHandle: string;
   productTitle: string;
 }) {
   const { colors } = useTheme();
@@ -188,7 +189,7 @@ export function Reviews({
         setError(null);
       }
       try {
-        const result = await fetchReviews(productNumericId, pageNum, PAGE_SIZE);
+        const result = await fetchReviews(productHandle, pageNum, PAGE_SIZE);
         setData((prev) =>
           append && prev
             ? { ...result, reviews: [...prev.reviews, ...result.reviews] }
@@ -203,7 +204,7 @@ export function Reviews({
         setLoadingMore(false);
       }
     },
-    [productNumericId]
+    [productHandle]
   );
 
   // Initial load. The async body only touches state after an await (the
@@ -214,7 +215,7 @@ export function Reviews({
     let cancelled = false;
     (async () => {
       try {
-        const result = await fetchReviews(productNumericId, 1, PAGE_SIZE);
+        const result = await fetchReviews(productHandle, 1, PAGE_SIZE);
         if (!cancelled) {
           setData(result);
           setError(null);
@@ -232,7 +233,7 @@ export function Reviews({
     return () => {
       cancelled = true;
     };
-  }, [productNumericId]);
+  }, [productHandle]);
 
   const onSubmit = async () => {
     setFormError(null);
@@ -247,7 +248,7 @@ export function Reviews({
     setSubmitting(true);
     try {
       await submitReview({
-        productId: productNumericId,
+        productId: productHandle,
         name: reviewerName,
         email: account.email,
         rating,

@@ -1,13 +1,11 @@
 /**
  * Shop store — live BeaTrackFam catalog, cart/wishlist, auth + profile.
  *
- * Catalog (products/collections) loads from the live storefront on mount.
- * Cart and wishlist are app-local; checkout hands off to Shopify's secure
- * checkout via a cart permalink (no API token needed).
- * Auth is device-local app accounts (lib/accounts.ts) — sign-in never
- * depends on Shopify's Customer Account API. Checkout attaches the buyer's
- * name/email/address to the Shopify cart so orders link to the customer
- * in Shopify admin.
+ * Catalog (products/collections) loads from the Cloudflare storefront's
+ * single GET /api/catalog call on mount and on pull-to-refresh.
+ * Cart and wishlist are app-local; cart lines use the binding contract
+ * shape (handle + variant title, integer cents) shared with checkout.
+ * Auth is device-local app accounts (lib/accounts.ts).
  */
 import React, {
   createContext,
@@ -18,30 +16,25 @@ import React, {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import { fetchPurchasableVariantIds } from "../lib/storefront";
 import {
   INITIAL_CART,
   INITIAL_WISHLIST_IDS,
-  fetchCollections,
-  fetchProducts,
+  fetchCatalog,
   formatMoney,
+  isBuyableProduct,
   type CartLine,
   type Collection,
-  type MoneyV2,
   type Product,
   type ProductVariant,
 } from "../data/mock";
 import {
+  addOrderReceipt as persistOrderReceipt,
   clearLocalProfile,
   getLocalProfile,
   saveLocalProfile,
-  startLogin as startShopifyLogin,
   type LocalAddress,
   type LocalProfile,
   type SocialHandles,
-} from "../lib/customer";
-import {
-  addOrderReceipt as persistOrderReceipt,
   requestCancelOrderReceipt,
   changePassword as changeAccountPassword,
   createAccount,
@@ -49,12 +42,11 @@ import {
   getCurrentAccount,
   saveAccount,
   signIn as signInToAccount,
-  signInWithShopifyCustomer,
-  linkShopifyOrderToCurrentAccount,
+  linkSiteOrderToCurrentAccount,
   signOutAccount,
   type AccountResult,
   type AppAccount,
-  type LinkedShopifyOrder,
+  type LinkedSiteOrder,
   type OrderReceipt,
 } from "../lib/accounts";
 import {
@@ -69,20 +61,24 @@ interface ShopContextValue {
   catalogLoading: boolean;
   catalogError: string | null;
   refreshCatalog: () => void;
-  getProduct: (numericId: string) => Product | undefined;
-  // Cart + wishlist
+  getProduct: (handle: string) => Product | undefined;
+  // Cart + wishlist (wishlistIds are product handles)
   cartLines: CartLine[];
   wishlistIds: string[];
   cartCount: number;
-  subtotal: MoneyV2;
+  /** Cart subtotal in integer cents. */
+  subtotal: number;
   addToCart: (
     product: Product,
     variant: ProductVariant,
     quantity: number
   ) => void;
-  isVariantPurchasable: (variantId: string) => boolean;
-  updateQuantity: (lineId: string, quantity: number) => void;
-  removeLine: (lineId: string) => void;
+  updateQuantity: (
+    handle: string,
+    variantTitle: string,
+    quantity: number
+  ) => void;
+  removeLine: (handle: string, variantTitle: string) => void;
   clearCart: () => void;
   toggleWishlist: (productId: string) => void;
   removeFromWishlist: (productId: string) => void;
@@ -100,9 +96,7 @@ interface ShopContextValue {
     password: string
   ) => Promise<AccountResult>;
   signIn: (email: string, password: string) => Promise<AccountResult>;
-  /** Continue with Shopify → the same one app account, linked by email. */
-  signInWithShopify: () => Promise<AccountResult>;
-  linkShopifyOrder: (order: LinkedShopifyOrder) => Promise<void>;
+  linkSiteOrder: (order: LinkedSiteOrder) => Promise<void>;
   signOut: () => Promise<void>;
   continueAsGuest: () => Promise<void>;
   changePassword: (
@@ -132,12 +126,8 @@ interface ShopContextValue {
 
 const ShopContext = createContext<ShopContextValue | null>(null);
 
-let lineSeq = 100;
-
 export function ShopProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
-  const [purchasableVariantIds, setPurchasableVariantIds] =
-    useState<Set<string> | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -221,30 +211,9 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  /** Continue with Shopify: OAuth in the in-app browser (Shopify's own
-   * page — same flow as Order History), then link or create the one
-   * app account for that email, so both sign-in paths land in the same
-   * account and its orders. startLogin also persisted the Shopify
-   * session, so Order History is live immediately. */
-  const signInWithShopify = useCallback(async (): Promise<AccountResult> => {
-    const login = await startShopifyLogin();
-    if (!login.ok) return { ok: false, reason: login.reason };
-    const seed = await getLocalProfile();
-    const result = await signInWithShopifyCustomer({
-      customer: login.session.customer,
-      seedProfile: seed,
-    });
-    if (result.ok) {
-      setAccount(result.account);
-      setOnboardingDone(true);
-      void markOnboardingDone();
-    }
-    return result;
-  }, []);
-
-  const linkShopifyOrder = useCallback(
-    async (order: LinkedShopifyOrder): Promise<void> => {
-      const next = await linkShopifyOrderToCurrentAccount(order);
+  const linkSiteOrder = useCallback(
+    async (order: LinkedSiteOrder): Promise<void> => {
+      const next = await linkSiteOrderToCurrentAccount(order);
       if (next) setAccount(next);
     },
     []
@@ -440,12 +409,13 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     setCatalogLoading(true);
     setCatalogError(null);
-    Promise.all([fetchProducts(), fetchCollections(), fetchPurchasableVariantIds()])
-      .then(([ps, cs, purchasableIds]) => {
+    // Single catalog call; zero-variant products are excluded from
+    // shop listings here (they have no priced variant to buy).
+    fetchCatalog(true)
+      .then((data) => {
         if (cancelled) return;
-        setProducts(ps);
-        setCollections(cs);
-        setPurchasableVariantIds(purchasableIds);
+        setProducts(data.products.filter(isBuyableProduct));
+        setCollections(data.collections);
         setCatalogLoading(false);
       })
       .catch((e) => {
@@ -466,41 +436,36 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   }, [refreshCatalog]);
 
   const getProduct = useCallback(
-    (numericId: string) => products.find((p) => p.numericId === numericId),
+    (handle: string) => products.find((p) => p.handle === handle),
     [products]
-  );
-
-  // True unless we know Shopify's Storefront API can't sell this variant
-  // (product never published to the app sales channel). Unknown = fail open.
-  const isVariantPurchasable = useCallback(
-    (variantId: string) =>
-      purchasableVariantIds === null || purchasableVariantIds.has(variantId),
-    [purchasableVariantIds]
   );
 
   const addToCart = useCallback(
     (product: Product, variant: ProductVariant, quantity: number) => {
+      // Unavailable variants never enter the cart. Every visible,
+      // priced, available variant is buyable — no channel gating.
+      if (!variant.available) return;
       setCartLines((lines) => {
         const existing = lines.find(
-          (l) => l.product.id === product.id && l.variantId === variant.id
+          (l) =>
+            l.handle === product.handle && l.variantTitle === variant.title
         );
         if (existing) {
           return lines.map((l) =>
-            l.id === existing.id
-              ? { ...l, quantity: l.quantity + quantity }
+            l.handle === product.handle && l.variantTitle === variant.title
+              ? { ...l, qty: l.qty + quantity }
               : l
-          );
+        );
         }
-        lineSeq += 1;
         return [
           ...lines,
           {
-            id: `line-${lineSeq}`,
-            product,
-            variantId: variant.id,
+            handle: product.handle,
             variantTitle: variant.title,
-            unitPrice: variant.price,
-            quantity,
+            title: product.title,
+            price_cents: variant.price_cents,
+            qty: quantity,
+            image: product.image,
           },
         ];
       });
@@ -508,16 +473,29 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const updateQuantity = useCallback((lineId: string, quantity: number) => {
-    setCartLines((lines) =>
-      quantity <= 0
-        ? lines.filter((l) => l.id !== lineId)
-        : lines.map((l) => (l.id === lineId ? { ...l, quantity } : l))
-    );
-  }, []);
+  const updateQuantity = useCallback(
+    (handle: string, variantTitle: string, quantity: number) => {
+      setCartLines((lines) =>
+        quantity <= 0
+          ? lines.filter(
+              (l) => !(l.handle === handle && l.variantTitle === variantTitle)
+            )
+          : lines.map((l) =>
+              l.handle === handle && l.variantTitle === variantTitle
+                ? { ...l, qty: quantity }
+                : l
+            )
+      );
+    },
+    []
+  );
 
-  const removeLine = useCallback((lineId: string) => {
-    setCartLines((lines) => lines.filter((l) => l.id !== lineId));
+  const removeLine = useCallback((handle: string, variantTitle: string) => {
+    setCartLines((lines) =>
+      lines.filter(
+        (l) => !(l.handle === handle && l.variantTitle === variantTitle)
+      )
+    );
   }, []);
 
   const toggleWishlist = useCallback((productId: string) => {
@@ -538,15 +516,11 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<ShopContextValue>(() => {
-    const cartCount = cartLines.reduce((n, l) => n + l.quantity, 0);
-    const total = cartLines.reduce(
-      (sum, l) => sum + Number(l.unitPrice.amount) * l.quantity,
+    const cartCount = cartLines.reduce((n, l) => n + l.qty, 0);
+    const subtotal = cartLines.reduce(
+      (sum, l) => sum + l.price_cents * l.qty,
       0
     );
-    const subtotal: MoneyV2 = {
-      amount: total.toFixed(2),
-      currencyCode: "USD",
-    };
     return {
       products,
       collections,
@@ -559,7 +533,6 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       cartCount,
       subtotal,
       addToCart,
-      isVariantPurchasable,
       updateQuantity,
       removeLine,
       clearCart,
@@ -573,8 +546,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       isGuest: !account,
       signUp,
       signIn,
-      signInWithShopify,
-      linkShopifyOrder,
+      linkSiteOrder,
       signOut,
       continueAsGuest,
       changePassword,
@@ -615,8 +587,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     onboardingDone,
     signUp,
     signIn,
-    signInWithShopify,
-    linkShopifyOrder,
+    linkSiteOrder,
     signOut,
     continueAsGuest,
     changePassword,

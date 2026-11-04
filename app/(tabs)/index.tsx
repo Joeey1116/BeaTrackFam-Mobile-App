@@ -1,5 +1,5 @@
 /** Home tab — banner slideshow, search, greeting, guest banner, featured collections, new arrivals. */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -21,8 +21,8 @@ import { TopBar } from "../../components/TopBar";
 import { LogoEye } from "../../components/LogoEye";
 import { ProductImage } from "../../components/ProductImage";
 import { useShop } from "../../store/shop";
-import { fetchCollectionProducts } from "../../data/mock";
 import type { Collection, Product } from "../../data/mock";
+import { productMinPriceCents } from "../../data/mock";
 import { Radius, Spacing, TabBarClearance, Type } from "../../constants/theme";
 
 const BANNER_KEY = "beatrackfam-guest-banner-dismissed";
@@ -323,10 +323,10 @@ function ProductCard({ product }: { product: Product }) {
   const { colors } = useTheme();
   const router = useRouter();
   const { isWishlisted, toggleWishlist } = useShop();
-  const wished = isWishlisted(product.id);
+  const wished = isWishlisted(product.handle);
   return (
     <Pressable
-      onPress={() => router.push(`/product/${product.numericId}`)}
+      onPress={() => router.push(`/product/${product.handle}`)}
       style={({ pressed }) => [styles.card, { opacity: pressed ? 0.85 : 1 }]}
     >
       <View>
@@ -337,7 +337,7 @@ function ProductCard({ product }: { product: Product }) {
           rounded={Radius.lg}
         />
         <Pressable
-          onPress={() => toggleWishlist(product.id)}
+          onPress={() => toggleWishlist(product.handle)}
           hitSlop={10}
           style={[styles.heart, { backgroundColor: colors.surfaceRaised }]}
         >
@@ -352,7 +352,10 @@ function ProductCard({ product }: { product: Product }) {
         {product.title}
       </Text>
       <Text style={[styles.cardPrice, { color: colors.text }]}>
-        ${Number(product.price.amount).toFixed(2)}
+        {(() => {
+          const min = productMinPriceCents(product);
+          return min === null ? "" : `$${(min / 100).toFixed(2)}`;
+        })()}
       </Text>
     </Pressable>
   );
@@ -405,33 +408,16 @@ export default function Home() {
     return null;
   }, [profile.interests, collections]);
 
-  const [spotlight, setSpotlight] = useState<{
-    handle: string;
-    products: Product[];
-  } | null>(null);
-
-  useEffect(() => {
-    if (!interestCollection) return;
-    const handle = interestCollection.handle;
-    let live = true;
-    fetchCollectionProducts(handle)
-      .then((ps) => {
-        if (live) setSpotlight({ handle, products: ps });
-      })
-      .catch(() => {
-        if (live) setSpotlight({ handle, products: [] });
-      });
-    return () => {
-      live = false;
-    };
-  }, [interestCollection]);
-
-  const spotlightProducts =
-    interestCollection &&
-    spotlight?.handle === interestCollection.handle &&
-    spotlight.products.length > 0
-      ? spotlight.products
-      : null;
+  // Spotlight products come from the loaded catalog via the
+  // collection's product_handles — no per-collection fetch.
+  const spotlightProducts = useMemo(() => {
+    if (!interestCollection) return null;
+    const byHandle = new Map(products.map((p) => [p.handle, p]));
+    const ps = interestCollection.product_handles
+      .map((h) => byHandle.get(h))
+      .filter((p): p is Product => p !== undefined);
+    return ps.length > 0 ? ps : null;
+  }, [interestCollection, products]);
 
   useEffect(() => {
     AsyncStorage.getItem(BANNER_KEY)
@@ -531,7 +517,7 @@ export default function Home() {
             contentContainerStyle={styles.rail}
           >
             {collections.map((c) => (
-              <CollectionCircle key={c.id} collection={c} />
+              <CollectionCircle key={c.handle} collection={c} />
             ))}
           </ScrollView>
 
@@ -554,7 +540,7 @@ export default function Home() {
             contentContainerStyle={styles.rail}
           >
             {products.slice(0, 10).map((p) => (
-              <View key={p.id} style={styles.railItem}>
+              <View key={p.handle} style={styles.railItem}>
                 <ProductCard product={p} />
               </View>
             ))}
@@ -578,7 +564,7 @@ export default function Home() {
                 contentContainerStyle={styles.rail}
               >
                 {famFavorites.slice(0, 8).map((p) => (
-                  <View key={p.id} style={styles.railItem}>
+                  <View key={p.handle} style={styles.railItem}>
                     <ProductCard product={p} />
                   </View>
                 ))}

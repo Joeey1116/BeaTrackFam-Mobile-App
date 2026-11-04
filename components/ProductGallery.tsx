@@ -2,10 +2,11 @@
  * ProductGallery — swipeable product image carousel.
  *
  * Horizontal FlatList with paging + snap, interactive dots, and a "2 / 8"
- * counter. Reuses the ProductImage tile visuals. When the selected variant
- * has its own linked image, the carousel scrolls to it automatically.
+ * counter. Reuses the ProductImage tile visuals. Images are the
+ * product's own images only: D1 has no per-variant images, so there is
+ * no variant-image path and none is faked.
  */
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -19,25 +20,22 @@ import {
 import { useTheme } from "./ThemeProvider";
 import { ProductImage } from "./ProductImage";
 import { Radius, Spacing } from "../constants/theme";
-import type { ShopifyImage } from "../lib/shopify";
 
 interface ProductGalleryProps {
-  images: ShopifyImage[];
-  /** URL of the selected variant's linked image (null when it has none). */
-  variantImageUrl?: string | null;
+  /** Product image URLs (R2). No per-variant images exist in D1. */
+  images: string[];
   rounded?: number;
   aspectRatio?: number;
 }
 
 export function ProductGallery({
   images,
-  variantImageUrl = null,
   rounded = Radius.lg,
   aspectRatio = 0.9,
 }: ProductGalleryProps) {
   const { colors } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
-  const listRef = useRef<FlatList<ShopifyImage>>(null);
+  const listRef = useRef<FlatList<string>>(null);
   const [index, setIndex] = useState(0);
   // The list sits inside the page's horizontal padding, so its real width is
   // narrower than the window. Measure it and size every page to match —
@@ -46,20 +44,6 @@ export function ProductGallery({
   const pageWidth = measuredWidth ?? windowWidth;
 
   const safeIndex = images.length > 0 ? Math.min(index, images.length - 1) : 0;
-
-  // When the selected variant has its own image, scroll the carousel to it.
-  // This only drives the native list (an external system); the index state
-  // syncs back via onScroll, since programmatic scrolls emit scroll events.
-  useEffect(() => {
-    if (!variantImageUrl || images.length === 0) return;
-    const i = images.findIndex((img) => img.url === variantImageUrl);
-    if (i < 0) return;
-    try {
-      listRef.current?.scrollToIndex({ index: i, animated: true });
-    } catch {
-      // Item not laid out yet — a later scroll event will sync state.
-    }
-  }, [variantImageUrl, images]);
 
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -101,7 +85,7 @@ export function ProductGallery({
       <FlatList
         ref={listRef}
         data={images}
-        keyExtractor={(item) => item.url}
+        keyExtractor={(item) => item}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
@@ -134,7 +118,7 @@ export function ProductGallery({
           <View style={styles.dots}>
             {images.map((img, i) => (
               <Pressable
-                key={img.url}
+                key={img}
                 onPress={() => goToIndex(i)}
                 hitSlop={8}
                 accessibilityLabel={`Go to image ${i + 1}`}
