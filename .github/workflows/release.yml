@@ -1,0 +1,139 @@
+name: Attach bundles to release
+
+# Runs when a version tag is pushed (e.g. v13.0.0) and attaches the store
+# binaries built for that exact version to the GitHub release — no manual
+# work, no re-uploading from a laptop. Also runnable by hand from the
+# Actions tab (workflow_dispatch) to backfill an already-published
+# release, e.g. v13.0.0.
+#
+# The build workflows (ios-build.yml / android-build.yml) are still run by
+# hand first — they upload the IPA/AAB to TestFlight/Play AND save them as
+# run artifacts (30-day retention). The tag is pushed after the builds,
+# pointing at the same commit. This workflow then:
+#   1. reads version + iOS buildNumber + Android versionCode from app.json
+#      at the tag (fails if the tag doesn't match app.json),
+#   2. downloads the IPA artifact from the latest successful iOS build run
+#      and the AAB artifact from the latest successful Android build run
+#      for that exact version,
+#   3. creates the GitHub release for the tag (title "Version X.Y.Z (N)")
+#      if it doesn't exist, or uses the existing one,
+#   4. attaches the .ipa, the .aab, and the distribution zip (a source
+#      archive of the tagged tree, e.g. beatrackfam-app-v12.2.3.zip),
+#      overwriting same-name assets — so re-running never duplicates
+#      anything or fails on an existing release.
+#
+# Costs nothing extra: one ubuntu-latest job, a few minutes, on the free
+# standard runner. Public repos = free Actions minutes.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag to attach bundles to (e.g. v13.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  attach-bundles:
+    name: Attach IPA + AAB to release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ARTIFACT_PREFIX: BeaTrackFam
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v5
+        with:
+          ref: "${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}"
+          fetch-depth: 1
+
+      - name: Read version from app.json and verify the tag matches
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="${{ inputs.tag }}"
+          fi
+          VERSION="$(jq -r '.expo.version' app.json)"
+          IOS_BUILD="$(jq -r '.expo.ios.buildNumber' app.json)"
+          ANDROID_CODE="$(jq -r '.expo.android.versionCode' app.json)"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "IOS_BUILD=$IOS_BUILD" >> "$GITHUB_ENV"
+          echo "ANDROID_CODE=$ANDROID_CODE" >> "$GITHUB_ENV"
+          echo "IPA_ARTIFACT=${ARTIFACT_PREFIX}-${VERSION}-${IOS_BUILD}-ipa" >> "$GITHUB_ENV"
+          echo "AAB_ARTIFACT=${ARTIFACT_PREFIX}-${VERSION}-${ANDROID_CODE}-aab" >> "$GITHUB_ENV"
+          if [ "v$VERSION" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match app.json version $VERSION — the tag must point at the commit whose app.json carries this version."
+            exit 1
+          fi
+          echo "Tag $TAG matches app.json: version $VERSION, iOS build $IOS_BUILD, Android versionCode $ANDROID_CODE"
+
+      - name: Download the IPA + AAB artifacts
+        run: |
+          # Find each artifact by exact name in the most recent successful
+          # build runs. Build artifacts are kept 30 days, so this workflow
+          # must run within 30 days of the builds — normally it fires the
+          # moment the tag is pushed, right after the builds.
+          download_artifact() {
+            local workflow="$1" name="$2" dest="$3"
+            local run_ids
+            run_ids="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?status=completed&per_page=10" --jq '.workflow_runs[] | select(.conclusion == "success") | .id')"
+            for run_id in $run_ids; do
+              if gh run download "$run_id" --name "$name" --dir "$dest" 2>/dev/null; then
+                echo "Downloaded artifact '$name' from run $run_id ($workflow)"
+                return 0
+              fi
+            done
+            echo "::error::Artifact '$name' not found in the last 10 successful runs of $workflow. Run the build workflow for version $VERSION first (or re-run it — artifacts expire after 30 days), then re-run this workflow."
+            return 1
+          }
+          mkdir -p bundles/ipa bundles/aab
+          download_artifact ios-build.yml "$IPA_ARTIFACT" bundles/ipa
+          download_artifact android-build.yml "$AAB_ARTIFACT" bundles/aab
+          IPA_FILE="$(find bundles/ipa -name '*.ipa' -print -quit)"
+          AAB_FILE="$(find bundles/aab -name '*.aab' -print -quit)"
+          [ -n "$IPA_FILE" ] || { echo "::error::No .ipa file found inside the downloaded IPA artifact."; exit 1; }
+          [ -n "$AAB_FILE" ] || { echo "::error::No .aab file found inside the downloaded AAB artifact."; exit 1; }
+          echo "IPA_FILE=$IPA_FILE" >> "$GITHUB_ENV"
+          echo "AAB_FILE=$AAB_FILE" >> "$GITHUB_ENV"
+          ls -lh "$IPA_FILE" "$AAB_FILE"
+
+      - name: Build the distribution zip (source archive of the tag)
+        # Past releases carried this zip (e.g. beatrackfam-app-v12.2.3.zip)
+        # so Joey can pull the project from GitHub himself.
+        run: |
+          git archive HEAD --format=zip --output "beatrackfam-app-v${VERSION}.zip"
+          echo "DIST_ZIP=beatrackfam-app-v${VERSION}.zip" >> "$GITHUB_ENV"
+          ls -lh "beatrackfam-app-v${VERSION}.zip"
+
+      - name: Create the release if needed, then attach the bundles
+        run: |
+          TITLE="Version $VERSION ($IOS_BUILD)"
+          # Release body: the What's New file for this version, if it was
+          # saved (store/whats-new-X.Y.Z.txt), under the standard heading.
+          # Otherwise the release gets an empty description.
+          NOTES_FILE="store/whats-new-${VERSION}.txt"
+          : > release-notes.txt
+          if [ -f "$NOTES_FILE" ]; then
+            { echo "## What's new in this version"; echo; cat "$NOTES_FILE"; } > release-notes.txt
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — attaching to it."
+          else
+            echo "Creating release $TAG ($TITLE)..."
+            gh release create "$TAG" --title "$TITLE" --notes-file release-notes.txt
+          fi
+          # --clobber overwrites same-name assets, so re-running this
+          # workflow never duplicates assets or fails on an existing one.
+          gh release upload "$TAG" "$IPA_FILE" "$AAB_FILE" "$DIST_ZIP" --clobber
+          echo "Release $TAG now carries:"
+          gh release view "$TAG" --json assets --jq '.assets[].name'
